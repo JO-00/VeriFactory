@@ -1,0 +1,13 @@
+{
+  "src@1.1.2/FacilityFactory/FacilityStorageBase.sol": ".deps/npm/src@1.1.2/FacilityFactory/FacilityStorageBase.sol",
+  "@hiero-ledger//token-service/HederaTokenService.sol": ".deps/npm/@hiero-ledger//token-service/HederaTokenService.sol",
+  "lib@5.1.0/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/lib@5.1.0/hiero-contracts/token-service/HederaTokenService.sol",
+  "src@1.1.2/FacilityFactory/node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/src@1.1.2/FacilityFactory/node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "src@1.1.2/FacilityFactory/.node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/src@1.1.2/FacilityFactory/.node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "src@1.1.2/FacilityFactory/..node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/src@1.1.2/FacilityFactory/..node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "src@1.1.2/node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/src@1.1.2/node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "src@1.1.2/..node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/src@1.1.2/..node_modules/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "lib@5.1.0/@hiero-ledger/hiero-contracts@0.2.0/token-service/HederaTokenService.sol": ".deps/npm/lib@5.1.0/@hiero-ledger/hiero-contracts@0.2.0/token-service/HederaTokenService.sol",
+  "lib@5.1.0/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/lib@5.1.0/@hiero-ledger/hiero-contracts/token-service/HederaTokenService.sol",
+  "lib@5.1.0/@hiero-ledger/hiero-contracts/hiero-contracts/token-service/HederaTokenService.sol": ".deps/npm/lib@5.1.0/@hiero-ledger/hiero-contracts/hiero-contracts/token-service/HederaTokenService.sol"
+}

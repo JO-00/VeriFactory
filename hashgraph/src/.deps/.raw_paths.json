@@ -1,0 +1,10 @@
+{
+  "Facility@1.0.0/data_structs.sol": ".deps/npm/Facility@1.0.0/data_structs.sol",
+  "Facility@1.0.0/.data_structs.sol": ".deps/npm/Facility@1.0.0/.data_structs.sol",
+  "Facility@1.0.0/..data_structs.sol": ".deps/npm/Facility@1.0.0/..data_structs.sol",
+  "Facility@1.0.0/..Events.sol": ".deps/npm/Facility@1.0.0/..Events.sol",
+  "Facility@1.0.0/Events.sol": ".deps/npm/Facility@1.0.0/Events.sol",
+  "Facility@1.0.0/.Events.sol": ".deps/npm/Facility@1.0.0/.Events.sol",
+  "@hiero-ledger/hiero-contracts@0.2.0/contracts/token-service/IHederaTokenService.sol": ".deps/npm/@hiero-ledger/hiero-contracts@0.2.0/contracts/token-service/IHederaTokenService.sol",
+  "@hiero-ledger/hiero-contracts@0.2.0/contracts/hts-precompile/HederaTokenService.sol": ".deps/npm/@hiero-ledger/hiero-contracts@0.2.0/contracts/hts-precompile/HederaTokenService.sol"
+}
