@@ -14,6 +14,9 @@ contract Factory is  InitFactory , CommitteeInspector, Visualization{
         factory_docs = platform_docs;
         facility_contracts = _facility_contracts;
         inspector_contract = _inspector_contract;
+        for (uint256 i = 0; i < 6; i++) {
+            top_6_votes.push();
+        }
     }
     
 }

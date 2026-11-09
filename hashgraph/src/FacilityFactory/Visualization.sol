@@ -18,6 +18,14 @@ abstract contract Visualization is FactoryStorageBase {
     function getFacilitiesFromSignedContract(string memory contract_cid) external view returns (address[] memory){ return facilities_per_signed_contract[contract_cid]; }
     function getFacilityCommitteeMembers(address facility_contract) external view returns (address[] memory){ return committee_members_per_facility[facility_contract]; }
     function getCurrentCommittee() external view returns (address [] memory){ return current_committee ; }
+    function get_top_6_votes() external view returns (CandidateVotes[] memory) {return top_6_votes;}
+    function get_number_of_voters() external view returns (uint256) {return voters.length;}
+    function getCurrentInspectors() external view returns (Inspector[5] memory winners) {
+        require (votes_frozen , "votes not frozen yet");
+        for (uint8 i = 0 ; i < 5 ; i++){
+            winners[i] = candidate_addresses[top_6_votes[i].wallet];
+        }
+    }
     function getDAO() external view returns (address [] memory){ return DAO ; }
     function getCandidates() external view returns (WrappedCandidate [] memory){
         WrappedCandidate[] memory candidates_wrapped  = new WrappedCandidate[](candidates.length);

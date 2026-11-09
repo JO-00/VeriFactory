@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 import {FacilityRegistry} from "./../Facility/FacilityRegistry.sol";
-import {InitialGateway , FacilityMeta , Document , SignedContract , Inspector} from "./../data_structs.sol";
+import {InitialGateway , FacilityMeta , Document , SignedContract , Inspector, CandidateVotes} from "./../data_structs.sol";
 import {FacilityAdded} from "./../Events.sol";
 
 abstract contract FactoryStorageBase {
@@ -33,6 +33,7 @@ abstract contract FactoryStorageBase {
 
     // inspectors logic
     Inspector[] public candidates;
+    mapping(address => Inspector) candidate_addresses;
     mapping(address => bool) CandidateIsCompliant;
     mapping(address => uint256) public memberStake;
     mapping(address => uint256) candidate_votes;
@@ -40,8 +41,10 @@ abstract contract FactoryStorageBase {
     address[] public voters;
     address[] public DAO;
     address[] public current_committee;
+    CandidateVotes[] public top_6_votes;
     uint256 public latest_committee_generation_timestamp;
     mapping(address => address[]) public committee_members_per_facility;
+    bool public votes_frozen;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Factory: caller is not the owner");

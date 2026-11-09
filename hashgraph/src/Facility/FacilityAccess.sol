@@ -39,4 +39,8 @@ abstract contract FacilityAccess is FacilityStorageBase, IFacilityAccess {
         emergencyOverride = false;
         emit EmergencyOverrideDisabled();
     }
+
+    function setLandingPageURI(string memory new_uri) external onlyRole(ADMIN_ROLE){
+        LandingPageURI = new_uri;
+    }
 }

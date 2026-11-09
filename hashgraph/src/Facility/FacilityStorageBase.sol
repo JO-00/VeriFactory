@@ -14,6 +14,7 @@ abstract contract FacilityStorageBase is AccessControl {
 
 
     string public facilityName;
+    string public LandingPageURI;
     bool public emergencyOverride;
     address public admin;
 

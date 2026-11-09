@@ -4,48 +4,12 @@ import "./InitFactory.sol";
 import "./../data_structs.sol";
 import {RandomPicker} from "./../utils.sol";
 import {ICommitteeInspector} from "./../interfaces/IFactory.sol";
-import {NewCommittee} from "./../Events.sol";
+import {NewCommittee, CommitteeVotesFrozen} from "./../Events.sol";
+import {helpers} from "./../helpers.sol";
 
 
 abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector {
 
-    // ------------------------------------------------------------------
-    // Generic swap-and-pop helpers
-    // ------------------------------------------------------------------
-
-    /// @dev Removes `target` from `arr` (address array) via swap-and-pop.
-    ///      Returns true if the element was found and removed, false otherwise.
-    function _removeAddressFromArray(address[] storage arr, address target) private returns (bool) {
-        uint256 len = arr.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (arr[i] == target) {
-                arr[i] = arr[len - 1];
-                arr.pop();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// @dev Removes the Inspector whose wallet == `target` from `arr` via swap-and-pop.
-    ///      Returns true if found and removed, false otherwise.
-    ///      Note: memory copy of the Inspector (contains a dynamic array) is fine,
-    ///      the swap-and-pop pattern works with `Inspector memory` intermediate.
-    function _removeInspectorFromArray(Inspector[] storage arr, address target) private returns (bool) {
-        uint256 len = arr.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (arr[i].wallet == target) {
-                arr[i] = arr[len - 1];
-                arr.pop();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // ------------------------------------------------------------------
-    // Committee generation
-    // ------------------------------------------------------------------
 
     // Weak PRNG fix: uses Hedera HIP-351 PRNG via RandomPicker (non-view now).
     function generate_new_committee() external {
@@ -73,11 +37,15 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
             delete hasVoted[voters[i]];
         }
         delete voters;
+        votes_frozen = false;
 
         // Clear candidate vote tallies
         uint256 candLen = candidates.length;
         for (uint256 i = 0; i < candLen; i++) {
             delete candidate_votes[candidates[i].wallet];
+        }
+        for (uint8 i = 0 ; i < top_6_votes.length ; i++){
+            delete top_6_votes[i];
         }
     }
 
@@ -85,10 +53,17 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
     // Ranking
     // ------------------------------------------------------------------
 
-    function rank_candidates(address[] calldata preferences)
-        external
-        isCommitteeMember(msg.sender)
+    function _refreshTop6(address who) internal {
+        helpers._removeFromTop6(who, top_6_votes);
+        helpers._insertIntoTop6(who, candidate_votes[who] , top_6_votes);
+    }
+
+
+   function rank_candidates(address[] calldata preferences)
+    external
+    isCommitteeMember(msg.sender)
     {
+        require(!votes_frozen, "votes are already frozen");
         require(!hasVoted[msg.sender], "You have already voted");
         hasVoted[msg.sender] = true;
         voters.push(msg.sender);
@@ -97,17 +72,29 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
 
         for (uint256 i = 0; i < n; i++) {
             address c = preferences[i];
-
             if (c == address(0)) break;
             require(candidateIndexPlusOne[c] != 0, "not a candidate");
 
-            // reject duplicates within this ranking
             for (uint256 j = 0; j < i; j++) {
                 if (preferences[j] == c) revert("duplicate address not allowed");
             }
 
             candidate_votes[c] += 5 - i;
+
+            _refreshTop6(c);   // <-- slide / insert / drop as needed
         }
+        if (!votes_frozen){
+
+            if (
+                    (candidates.length <= 5) ||
+                    (top_6_votes[4].votes - top_6_votes[5].votes >= 5 && voters.length >= 4) ||
+                    (voters.length >= 3 && block.timestamp - latest_committee_generation_timestamp >= 2 days)
+                ) {
+                    votes_frozen = true;
+                }
+            
+        }
+
     }
 
     
@@ -117,14 +104,16 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
     // ------------------------------------------------------------------
 
     mapping(address => uint256) private candidateIndexPlusOne; // for deletion of candidateship optimization
+    
 
     function become_candidate(string[] memory attached_documents) external {
         require(candidateIndexPlusOne[msg.sender] == 0, "Already a candidate");
-
-        candidates.push(Inspector({
+        Inspector memory inspector = Inspector({
             wallet: msg.sender,
             AttachedDocumentsCIDs: attached_documents
-        }));
+        });
+        candidates.push(inspector);
+        candidate_addresses[msg.sender] = inspector;
 
         candidateIndexPlusOne[msg.sender] = candidates.length;
     }
@@ -145,6 +134,7 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
         candidates.pop();
         delete candidateIndexPlusOne[msg.sender];
         delete candidate_votes[msg.sender];
+        delete candidate_addresses[msg.sender];
         CandidateIsCompliant[msg.sender] = false;
     }
 
@@ -218,7 +208,7 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
         address[] storage members = committee_members_per_facility[facility_contract];
 
         // Remove from the facility's own list using the generic helper
-        require(_removeAddressFromArray(members, member), "member not found");
+        require(helpers._removeAddressFromArray(members, member), "member not found");
 
         // Remove from the global DAO array using O(1) swap-and-pop via DAOIndexPlusOne
         uint256 daoIdxPlusOne = DAOIndexPlusOne[member];
@@ -236,7 +226,7 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
 
         uint256 refund = memberStake[member];
         delete memberStake[member];
-        _removeAddressFromArray(current_committee , member);
+        helpers._removeAddressFromArray(current_committee , member);
 
         (bool ok, ) = payable(msg.sender).call{value: refund}("");
         require(ok, "refund failed");
@@ -246,49 +236,5 @@ abstract contract CommitteeInspector is FactoryStorageBase, ICommitteeInspector 
     // Inspector selection
     // ------------------------------------------------------------------
 
-    function getCurrentInspectors() external view returns (Inspector[5] memory winners) {
-        uint256 n = candidates.length;
-        require(n >= 5, "fewer than 5 candidates");
-
-        for (uint256 k = 0; k < 5; k++) {
-            uint256 bestVotes = type(uint256).max; // sentinel: "no candidate considered yet"
-            uint256 bestIdx = type(uint256).max;
-            bool found = false;
-
-            for (uint256 i = 0; i < n; i++) {
-                address c = candidates[i].wallet;
-                uint256 votes = candidate_votes[c];
-
-                // skip if already picked in an earlier slot
-                bool already = false;
-                for (uint256 j = 0; j < k; j++) {
-                    if (winners[j].wallet == c) { already = true; break; }
-                }
-                if (already) continue;
-
-                // first unpicked candidate always qualifies (even with 0 votes)
-                if (!found) {
-                    bestVotes = votes;
-                    bestIdx = i;
-                    found = true;
-                    continue;
-                }
-
-                // strictly better votes → take it
-                if (votes > bestVotes) {
-                    bestVotes = votes;
-                    bestIdx = i;
-                }
-                // tie-break: equal votes → lower index in candidates[] wins
-                else if (votes == bestVotes && i < bestIdx) {
-                    bestIdx = i;
-                }
-            }
-
-            require(found, "not enough candidates");
-            winners[k] = candidates[bestIdx];
-        }
-
-        return winners;
-    }
+    
 }

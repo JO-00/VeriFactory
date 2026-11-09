@@ -79,3 +79,8 @@ struct WrappedCandidate{
     Inspector candidate;
     bool is_compliant;
 }
+
+struct CandidateVotes{
+    address wallet ; 
+    uint256 votes;
+}

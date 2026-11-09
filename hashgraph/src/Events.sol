@@ -36,4 +36,5 @@ event FacilityAdded(
 event FacilityDeleted(address indexed facilityAddress , string attached_document, uint256 timestamp);
 
 event NewCommittee();
+event CommitteeVotesFrozen();
 

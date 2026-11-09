@@ -11,6 +11,7 @@ interface IFacilityAccess{
     function hasAccountRole(bytes32 role, address account) external view returns (bool);
     function EnableEmergencyOverride() external;
     function DisableEmergencyOverride() external;
+    function setLandingPageURI(string memory new_uri) external;
 }
 
 interface IFacilityKeys{
