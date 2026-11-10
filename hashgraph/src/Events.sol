@@ -13,8 +13,8 @@ event GatewayBanned(string indexed gatewayId, address indexed bannedBy, address 
 event RoleGrantedToAccount(bytes32 indexed role, address indexed account, address indexed sender);
 event RoleRevokedFromAccount(bytes32 indexed role, address indexed account, address indexed sender);
 
-event EmergencyOverrideEnabled();
-event EmergencyOverrideDisabled();
+event EmergencyOverrideEnabled(uint256 timestamp);
+event EmergencyOverrideDisabled(uint256 timestamp);
 
 event KeyRotated(
         string indexed gatewayId, 
@@ -35,6 +35,9 @@ event FacilityAdded(
 
 event FacilityDeleted(address indexed facilityAddress , string attached_document, uint256 timestamp);
 
-event NewCommittee();
-event CommitteeVotesFrozen();
+event NewCommittee(uint256 timestamp);
+event CommitteeVotesFrozen(uint256 timestamp);
+
+event DocumentAdded(address indexed facilityAddress, string indexed _cid, string indexed _docType);
+event DocumentRevoked(address indexed facilityAddress, string indexed _cid);
 

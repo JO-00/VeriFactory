@@ -12,9 +12,8 @@ struct KeyRecord {
 }
 
 struct CadencePolicy {
-    uint256 expectedInterval; // In seconds (e.g. 90 days)
+    uint256 expectedInterval; // In seconds
     uint256 gracePeriod;      // In seconds
-    uint256 maxPressureLimit; // Physics envelope threshold
 }
 
 struct Gateway {

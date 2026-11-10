@@ -33,11 +33,11 @@ abstract contract FacilityAccess is FacilityStorageBase, IFacilityAccess {
 
     function EnableEmergencyOverride() external onlyRole(ADMIN_ROLE) {
         emergencyOverride = true;
-        emit EmergencyOverrideEnabled();
+        emit EmergencyOverrideEnabled(block.timestamp);
     }
     function DisableEmergencyOverride() external onlyRole(ADMIN_ROLE){
         emergencyOverride = false;
-        emit EmergencyOverrideDisabled();
+        emit EmergencyOverrideDisabled(block.timestamp);
     }
 
     function setLandingPageURI(string memory new_uri) external onlyRole(ADMIN_ROLE){

@@ -1,0 +1,1 @@
+The script here is not meant to be ran because the bytecodes already exist on testnet

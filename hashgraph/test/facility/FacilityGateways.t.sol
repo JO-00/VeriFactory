@@ -73,11 +73,10 @@ contract FacilityGatewaysTest is BaseSetup {
 
     function test_setGatewayPolicy() public {
         vm.prank(admin);
-        f.setGatewayPolicy("GW-1", 100, 10, 1000);
+        f.setGatewayPolicy("GW-1", 100, 10);
 
         CadencePolicy memory p = f.getGatewayPolicy("GW-1");
         assertEq(p.expectedInterval, 100);
         assertEq(p.gracePeriod, 10);
-        assertEq(p.maxPressureLimit, 1000);
     }
 }

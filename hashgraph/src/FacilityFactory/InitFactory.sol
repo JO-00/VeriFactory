@@ -2,18 +2,15 @@
 pragma solidity ^0.8.20;
 
 import {FacilityRegistry} from "./../Facility/FacilityRegistry.sol";
-import "./../data_structs.sol";
-import {FacilityAdded, FacilityDeleted} from "./../Events.sol";
+import "../data_structs.sol";
+import {FacilityAdded, FacilityDeleted, DocumentAdded, DocumentRevoked} from "./../Events.sol";
 import {IInitFactory} from "./../interfaces/IFactory.sol";
-import {FactoryStorageBase} from "./FactoryStorageBase.sol";
+import {FactoryStorage} from "./FactoryStorageBase.sol";
+import {FactoryAuth} from "./FactoryAuth.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
 
-
-abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
+contract InitFactory is FactoryAuth, IInitFactory {
     using Clones for address;
-
-    
 
     // we aint gonna instantiate a facility contract with new(...) here cuz it'll bloat bytecode size
     function addExistingFacility(
@@ -21,8 +18,9 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         string calldata _location,
         string calldata _sectorType
     ) internal {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
         require(_facilityContract != address(0), "Invalid contract address");
-        require(facilityInfo[_facilityContract].facilityAddress == address(0), "Facility already registered");
+        require(l.facilityInfo[_facilityContract].facilityAddress == address(0), "Facility already registered");
 
         // 1. Interface Validation: Call facilityName() via try/catch
         string memory retrievedName;
@@ -42,7 +40,7 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
 
         // 3. metadata
 
-        FacilityMeta storage meta = facilityInfo[_facilityContract];
+        FacilityMeta storage meta = l.facilityInfo[_facilityContract];
         meta.facilityAddress = _facilityContract;
         meta.name = retrievedName;
         meta.location = _location;
@@ -51,15 +49,14 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         meta.isActive = true;
 
         emit FacilityAdded(
-            _facilityContract, 
-            meta.name, 
-            msg.sender, 
+            _facilityContract,
+            meta.name,
+            msg.sender,
             meta.location,
             meta.sectorType,
             meta.isActive
         );
     }
-
 
     function createFacility(
         string calldata _name,
@@ -69,50 +66,50 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         InitialGateway[] memory _gateways,
         Document[] memory contracts
     ) external returns (address clone) {
-        clone = facilityImplementation.clone();                 // instantiate the 45-byte proxy
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
+        clone = l.facilityImplementation.clone();                 // instantiate the 45-byte proxy
         FacilityRegistry(payable(clone)).initialize(msg.sender, _name , _initialRelayers , _gateways, contracts);
-        deployedFacilities.push(clone);
-        everRegistered[clone] = true;
+        l.deployedFacilities.push(clone);
+        l.everRegistered[clone] = true;
         addExistingFacility(clone, _location, _sectorType);
-
     }
 
     function removeFacilityFromPlatform(address facility_contract, string memory attached_document) external onlyFacilityAdmin(facility_contract){
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
         bool found = false;
-        for (uint256 i = 0 ; i < deployedFacilities.length ; i++){
-            if (deployedFacilities[i] == facility_contract){
+        for (uint256 i = 0 ; i < l.deployedFacilities.length ; i++){
+            if (l.deployedFacilities[i] == facility_contract){
 
-                deployedFacilities[i] = deployedFacilities[deployedFacilities.length - 1];
-                deployedFacilities.pop();
+                l.deployedFacilities[i] = l.deployedFacilities[l.deployedFacilities.length - 1];
+                l.deployedFacilities.pop();
                 found = true;
                 break;
-                
+
             }
         }
         if (found){
-            delete facilityInfo[facility_contract];
-            delete facilityDocs[facility_contract];
+            delete l.facilityInfo[facility_contract];
+            delete l.facilityDocs[facility_contract];
             emit FacilityDeleted(facility_contract , attached_document , block.timestamp);
         }
-            
+
     }
 
     function updateFacilityMeta(address facility_contract , FacilityMeta memory new_data) external onlyFacilityAdmin(facility_contract){
-        facilityInfo[facility_contract] = new_data;
+        FactoryStorage.layout().facilityInfo[facility_contract] = new_data;
     }
 
-
-
     function addFacilityDocument(
-        address _facility, 
-        string calldata _cid, 
-        string calldata _docType, 
+        address _facility,
+        string calldata _cid,
+        string calldata _docType,
         string calldata _title
     ) external onlyFacilityAdmin(_facility) {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
         require(bytes(_cid).length > 0, "Invalid CID");
-        
+
         // Save document metadata
-        facilityDocs[_facility].push(Document({
+        l.facilityDocs[_facility].push(Document({
             cid: _cid,
             docType: _docType,
             title: _title,
@@ -120,7 +117,7 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         }));
 
         // Append to facility CIDs array
-        facilityInfo[_facility].docCids.push(_cid);
+        l.facilityInfo[_facility].docCids.push(_cid);
 
         emit DocumentAdded(_facility, _cid, _docType);
     }
@@ -135,31 +132,33 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         string calldata _newDocType,
         string calldata _newTitle
     ) external onlyFacilityAdmin(_facility) {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
         require(bytes(_newCid).length > 0, "Invalid new CID");
         require(_removeCid(_facility, _oldCid), "Old CID not found");
 
         emit DocumentRevoked(_facility, _oldCid);
 
-        facilityDocs[_facility].push(Document({
+        l.facilityDocs[_facility].push(Document({
             cid: _newCid,
             docType: _newDocType,
             title: _newTitle,
             uploadedAt: block.timestamp
         }));
 
-        facilityInfo[_facility].docCids.push(_newCid);
+        l.facilityInfo[_facility].docCids.push(_newCid);
 
         emit DocumentAdded(_facility, _newCid, _newDocType);
     }
 
     // Helper internal array cleanup
     function _removeCid(address _facility, string memory _targetCid) internal returns (bool) {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
         bytes32 targetHash = keccak256(bytes(_targetCid));
         bool cidFound;
         bool docFound;
 
         // 1. remove from facilityInfo[_facility].docCids
-        string[] storage cids = facilityInfo[_facility].docCids;
+        string[] storage cids = l.facilityInfo[_facility].docCids;
         uint256 cidsLen = cids.length;
         for (uint256 i = 0; i < cidsLen; i++) {
             if (keccak256(bytes(cids[i])) == targetHash) {
@@ -171,7 +170,7 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         }
 
         // 2. remove from facilityDocs[_facility] (Document[])
-        Document[] storage docs = facilityDocs[_facility];
+        Document[] storage docs = l.facilityDocs[_facility];
         uint256 docsLen = docs.length;
         for (uint256 i = 0; i < docsLen; i++) {
             if (keccak256(bytes(docs[i].cid)) == targetHash) {
@@ -184,6 +183,7 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
 
         return cidFound && docFound;
     }
+
     function SignTangibleContract(
         string memory DocumentCID,
         address facility_contract,
@@ -191,9 +191,10 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
         bytes32 r,
         bytes32 s
     ) external onlyFacilityAdmin(facility_contract) {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
 
         // 1. duplicate check (per facility)
-        SignedContract[] storage signed = signed_contracts_per_facility[facility_contract];
+        SignedContract[] storage signed = l.signed_contracts_per_facility[facility_contract];
         bytes32 cidHash = keccak256(bytes(DocumentCID));
         for (uint256 i = 0; i < signed.length; i++) {
             if (keccak256(bytes(signed[i].DocumentCID)) == cidHash) {
@@ -203,8 +204,8 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
 
         // 2. contract must exist in the registry
         bool found = false;
-        for (uint256 i = 0; i < facility_contracts.length; i++) {
-            if (keccak256(bytes(facility_contracts[i].cid)) == cidHash) {
+        for (uint256 i = 0; i < l.facility_contracts.length; i++) {
+            if (keccak256(bytes(l.facility_contracts[i].cid)) == cidHash) {
                 found = true;
                 break;
             }
@@ -227,14 +228,14 @@ abstract contract InitFactory is IInitFactory ,  FactoryStorageBase{
             r: r,
             s: s
         }));
-        facilities_per_signed_contract[DocumentCID].push(facility_contract);
+        l.facilities_per_signed_contract[DocumentCID].push(facility_contract);
     }
-
-    
-
 
     function setLogo(string memory image_cid) external onlyOwner{
-        logo_image = image_cid;
+        FactoryStorage.layout().logo_image = image_cid;
     }
 
+    function setPlatformDocs(string[] memory _platform_docs) external onlyOwner{
+        FactoryStorage.layout().factory_docs = _platform_docs;
+    }
 }

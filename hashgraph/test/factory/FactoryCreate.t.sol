@@ -11,10 +11,10 @@ contract FactoryCreateTest is BaseSetup {
 
         assertEq(FacilityRegistry(payable(clone)).admin(), admin);
         assertEq(FacilityRegistry(payable(clone)).facilityName(), "Facility A");
-        assertEq(factory.getFacilityCount(), 1);
-        assertEq(factory.deployedFacilities(0), clone);
+        assertEq(viz.getFacilityCount(), 1);
+        assertEq(viz.getDeployedFacilities()[0], clone);
 
-        FacilityMeta memory meta = factory.getFacilityGlobalInfo(clone);
+        FacilityMeta memory meta = viz.getFacilityGlobalInfo(clone);
         assertEq(meta.facilityAddress, clone);
         assertEq(meta.name, "Facility A");
         assertEq(meta.location, "Tunis");
@@ -45,19 +45,26 @@ contract FactoryCreateTest is BaseSetup {
 
         vm.prank(admin);
         vm.expectRevert("Gateway relayer not specified");
-        factory.createFacility("F", "T", "E", _relayers(), gws, new Document[](2));
+        init.createFacility("F", "T", "E", _relayers(), gws, new Document[](2));
     }
-
 
     function test_createFacility_multipleIndependent() public {
         address c1 = _createFacility(admin, "A");
         address c2 = _createFacility(stranger, "B");
 
         assertTrue(c1 != c2);
-        assertEq(factory.getFacilityCount(), 2);
+        assertEq(viz.getFacilityCount(), 2);
         assertEq(FacilityRegistry(payable(c1)).admin(), admin);
         assertEq(FacilityRegistry(payable(c2)).admin(), stranger);
         assertEq(FacilityRegistry(payable(c1)).facilityName(), "A");
         assertEq(FacilityRegistry(payable(c2)).facilityName(), "B");
+    }
+    function test_addFacet_nonOwnerReverts() public {
+        bytes4[] memory s = new bytes4[](1);
+        s[0] = bytes4(keccak256("someUnusedSelector()"));
+
+        vm.prank(stranger);
+        vm.expectRevert("not owner");
+        factory.addFacet(address(0xDEAD), s);
     }
 }

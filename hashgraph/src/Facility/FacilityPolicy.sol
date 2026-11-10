@@ -10,14 +10,12 @@ abstract contract FacilityPolicy is FacilityStorageBase , IFacilityPolicy {
     function setGatewayPolicy(
         string calldata gatewayId, 
         uint256 expectedInterval, 
-        uint256 gracePeriod,
-        uint256 maxPressureLimit
+        uint256 gracePeriod
     ) external onlyRole(ADMIN_ROLE) {
         require(bytes(gateways[gatewayId].gatewayId).length != 0, "gateway doesn't even exist");
         gatewayPolicies[gatewayId] = CadencePolicy({
             expectedInterval: expectedInterval,
-            gracePeriod: gracePeriod,
-            maxPressureLimit: maxPressureLimit
+            gracePeriod: gracePeriod
         });
     }
 

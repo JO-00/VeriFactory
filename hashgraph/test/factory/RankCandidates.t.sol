@@ -8,12 +8,18 @@ contract RankCandidatesTest is BaseSetup {
     address internal facA;
     address internal facB;
 
-    address internal c1 = address(0xC1);
-    address internal c2 = address(0xC2);
-    address internal c3 = address(0xC3);
-    address internal c4 = address(0xC4);
-    address internal c5 = address(0xC5);
-    address internal c6 = address(0xC6);
+    uint256 internal C1_PK = 0xACEC1;
+    uint256 internal C2_PK = 0xACEC2;
+    uint256 internal C3_PK = 0xACEC3;
+    uint256 internal C4_PK = 0xACEC4;
+    uint256 internal C5_PK = 0xACEC5;
+    uint256 internal C6_PK = 0xACEC6;
+    address internal c1 = vm.addr(C1_PK);
+    address internal c2 = vm.addr(C2_PK);
+    address internal c3 = vm.addr(C3_PK);
+    address internal c4 = vm.addr(C4_PK);
+    address internal c5 = vm.addr(C5_PK);
+    address internal c6 = vm.addr(C6_PK);
 
     address internal v1 = address(0x1001);
     address internal v2 = address(0x1002);
@@ -23,33 +29,40 @@ contract RankCandidatesTest is BaseSetup {
 
     function setUp() public override {
         super.setUp();
-        facA = _createFacility(admin, "A");
-        facB = _createFacility(admin, "B");
         vm.deal(admin, 20 ether);
 
         string[] memory noDocs = new string[](0);
         address[6] memory cs = [c1, c2, c3, c4, c5, c6];
         for (uint256 i = 0; i < 6; i++) {
             vm.prank(cs[i]);
-            factory.become_candidate(noDocs);
+            committee.become_candidate(noDocs);
         }
 
+        _signInspectorContract(c1, C1_PK);
+        _signInspectorContract(c2, C2_PK);
+        _signInspectorContract(c3, C3_PK);
+        _signInspectorContract(c4, C4_PK);
+        _signInspectorContract(c5, C5_PK);
+        _signInspectorContract(c6, C6_PK);
+
+        facA = _createFacility(admin, "A");
+        facB = _createFacility(admin, "B");
+
         vm.startPrank(admin);
-        factory.set_committee_member{value: 25_000_000}(v1, facA);
-        factory.set_committee_member{value: 100_000_000}(v2, facA);
-        factory.set_committee_member{value: 100_000_000}(v3, facA);
-        factory.set_committee_member{value: 25_000_000}(v4, facB);
-        factory.set_committee_member{value: 100_000_000}(v5, facB);
+        committee.set_committee_member{value: 25_000_000}(v1, facA);
+        committee.set_committee_member{value: 100_000_000}(v2, facA);
+        committee.set_committee_member{value: 100_000_000}(v3, facA);
+        committee.set_committee_member{value: 25_000_000}(v4, facB);
+        committee.set_committee_member{value: 100_000_000}(v5, facB);
         vm.stopPrank();
 
         vm.warp(block.timestamp + 4 weeks);
-        factory.generate_new_committee();
+        committee.generate_new_committee();
 
-        assertEq(factory.getDAO().length, 5);
-        assertEq(factory.getCurrentCommittee().length, 5);
+        assertEq(viz.getDAO().length, 5);
+        assertEq(viz.getCurrentCommittee().length, 5);
     }
 
-    // below are some array builders _p1 _p2 _p5 cuz we dont wanna rebuild every time
     function _p1(address a) internal pure returns (address[] memory p) {
         p = new address[](1); p[0] = a;
     }
@@ -63,12 +76,12 @@ contract RankCandidatesTest is BaseSetup {
     }
 
     function _top6() internal view returns (CandidateVotes[] memory) {
-        return factory.get_top_6_votes();
+        return viz.get_top_6_votes();
     }
 
     function _rank(address voter, address[] memory prefs) internal {
         vm.prank(voter);
-        factory.rank_candidates(prefs);
+        committee.rank_candidates(prefs);
     }
 
     function test_initialTop6_AllZero() public view {
@@ -81,7 +94,7 @@ contract RankCandidatesTest is BaseSetup {
     }
 
     function test_initialVotesNotFrozen() public view {
-        assertFalse(factory.votes_frozen());
+        assertFalse(viz.votes_frozen());
     }
 
     function test_rank_singlePreference_InsertsAtSlot0() public {
@@ -164,13 +177,13 @@ contract RankCandidatesTest is BaseSetup {
 
         vm.prank(v1);
         vm.expectRevert("duplicate address not allowed");
-        factory.rank_candidates(p);
+        committee.rank_candidates(p);
     }
 
     function test_rank_nonCandidate_Reverts() public {
         vm.prank(v1);
         vm.expectRevert("not a candidate");
-        factory.rank_candidates(_p1(stranger));
+        committee.rank_candidates(_p1(stranger));
     }
 
     function test_rank_addressZero_BreaksAndIgnoresRest() public {
@@ -202,18 +215,18 @@ contract RankCandidatesTest is BaseSetup {
         _rank(v1, _p1(c1));
         vm.prank(v1);
         vm.expectRevert("You have already voted");
-        factory.rank_candidates(_p1(c2));
+        committee.rank_candidates(_p1(c2));
     }
 
     function test_rank_nonCommitteeMember_Reverts() public {
         vm.prank(stranger);
         vm.expectRevert("not a committee member");
-        factory.rank_candidates(_p1(c1));
+        committee.rank_candidates(_p1(c1));
     }
 
     function test_getCurrentInspectors_RevertsBeforeFreeze() public {
-        vm.expectRevert("votes not frozen yet");
-        factory.getCurrentInspectors();
+        vm.expectRevert("votes are not frozen yet");
+        committee.getCurrentInspectors();
     }
 
     function test_getCurrentInspectors_ReturnsTop5AfterFreeze() public {
@@ -221,9 +234,9 @@ contract RankCandidatesTest is BaseSetup {
         _rank(v2, _p5(c6, c5, c4, c3, c2));
         vm.warp(block.timestamp + 2 days + 1);
         _rank(v3, _p1(c1));
-        assertTrue(factory.votes_frozen());
+        assertTrue(viz.votes_frozen());
 
-        Inspector[5] memory w = factory.getCurrentInspectors();
+        Inspector[5] memory w = committee.getCurrentInspectors();
         CandidateVotes[] memory t = _top6();
         for (uint256 i = 0; i < 5; i++) {
             assertEq(w[i].wallet, t[i].wallet);
@@ -238,7 +251,7 @@ contract RankCandidatesTest is BaseSetup {
         assertEq(before[0].wallet, c1);
 
         vm.prank(c1);
-        factory.quit_candidateship();
+        committee.quit_candidateship();
 
         CandidateVotes[] memory afterQ = _top6();
         assertEq(afterQ[0].wallet, c1, "KNOWN BUG: stale entry after quit");

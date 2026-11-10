@@ -22,8 +22,7 @@ interface IFacilityPolicy{
     function setGatewayPolicy(
         string calldata gatewayId, 
         uint256 expectedInterval, 
-        uint256 gracePeriod,
-        uint256 maxPressureLimit
+        uint256 gracePeriod
     ) external;
 
 
@@ -31,7 +30,7 @@ interface IFacilityPolicy{
 }
 
 interface IVisualization{
-        function getAllGateways() external view returns (string[] memory);
+    function getAllGateways() external view returns (string[] memory);
     function getAllRelayers() external view returns (address[] memory);
     function getRelayerGateways(address relayer) external view returns (string[] memory );
 
