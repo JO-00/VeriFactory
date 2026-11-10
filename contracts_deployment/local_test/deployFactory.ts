@@ -3,12 +3,12 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
-    JsonRpcProvider,
-    Wallet,
-    ContractFactory,
-    Contract,
-    Interface,
-    NonceManager
+  JsonRpcProvider,
+  Wallet,
+  ContractFactory,
+  Contract,
+  Interface,
+  NonceManager
 } from "ethers";
 
 import { config } from "dotenv";
@@ -19,44 +19,44 @@ config();
 // --------------------------------------------------
 // ARTIFACT LOADER
 // --------------------------------------------------
-
+const registryArtifact = findArtifact(["FacilityRegistry"]);
 const OUT_DIR = path.resolve(
-    __dirname,
-    "../../hashgraph/out"
+  __dirname,
+  "../../hashgraph/out"
 );
 
 function findArtifact(names: string[]): any {
-    const candidates: string[] = [];
+  const candidates: string[] = [];
 
-    function walk(dir: string) {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const fullPath = path.join(dir, entry.name);
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
 
-            if (entry.isDirectory()) {
-                walk(fullPath);
-            } else if (
-                names.some(name => entry.name === `${name}.json`)
-            ) {
-                candidates.push(fullPath);
-            }
-        }
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (
+        names.some(name => entry.name === `${name}.json`)
+      ) {
+        candidates.push(fullPath);
+      }
     }
+  }
 
-    walk(OUT_DIR);
+  walk(OUT_DIR);
 
-    if (candidates.length === 0) {
-        throw new Error(
-            `Artifact not found: ${names.join(" / ")}. Run forge build.`
-        );
-    }
-
-    const artifact = JSON.parse(
-        fs.readFileSync(candidates[0], "utf8")
+  if (candidates.length === 0) {
+    throw new Error(
+      `Artifact not found: ${names.join(" / ")}. Run forge build.`
     );
+  }
 
-    console.log(`Loaded ${artifact.contractName}: ${candidates[0]}`);
+  const artifact = JSON.parse(
+    fs.readFileSync(candidates[0], "utf8")
+  );
 
-    return artifact;
+  console.log(`Loaded ${artifact.contractName}: ${candidates[0]}`);
+
+  return artifact;
 }
 
 // --------------------------------------------------
@@ -64,45 +64,45 @@ function findArtifact(names: string[]): any {
 // --------------------------------------------------
 
 async function deployFacet(
-    name: string,
-    artifact: any,
-    wallet: Wallet|NonceManager
+  name: string,
+  artifact: any,
+  wallet: Wallet | NonceManager
 ): Promise<string> {
 
-    console.log(`\nDeploying ${name}...`);
+  console.log(`\nDeploying ${name}...`);
 
-    const bytecode = artifact.bytecode.object.startsWith("0x")
-        ? artifact.bytecode.object
-        : "0x" + artifact.bytecode.object;
+  const bytecode = artifact.bytecode.object.startsWith("0x")
+    ? artifact.bytecode.object
+    : "0x" + artifact.bytecode.object;
 
-    const factory = new ContractFactory(
-        artifact.abi,
-        bytecode,
-        wallet
-    );
+  const factory = new ContractFactory(
+    artifact.abi,
+    bytecode,
+    wallet
+  );
 
-    const contract = await factory.deploy();
+  const contract = await factory.deploy();
 
-    const tx = contract.deploymentTransaction();
+  const tx = contract.deploymentTransaction();
 
-    if (!tx) {
-        throw new Error(`${name}: deployment transaction missing`);
-    }
+  if (!tx) {
+    throw new Error(`${name}: deployment transaction missing`);
+  }
 
-    console.log("Transaction:", tx.hash);
+  console.log("Transaction:", tx.hash);
 
-    const receipt = await tx.wait();
+  const receipt = await tx.wait();
 
-    if (!receipt || receipt.status !== 1) {
-        throw new Error(`${name}: deployment failed`);
-    }
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`${name}: deployment failed`);
+  }
 
-    const address = await contract.getAddress();
+  const address = await contract.getAddress();
 
-    console.log(`${name} deployed:`, address);
-    console.log("Gas used:", receipt.gasUsed.toString());
+  console.log(`${name} deployed:`, address);
+  console.log("Gas used:", receipt.gasUsed.toString());
 
-    return address;
+  return address;
 }
 
 // --------------------------------------------------
@@ -110,59 +110,59 @@ async function deployFacet(
 // --------------------------------------------------
 
 async function registerFacet(
-    name: string,
-    factory: Contract,
-    facetAddress: string,
-    artifact: any,
-    functionNames: string[]
+  name: string,
+  factory: Contract,
+  facetAddress: string,
+  artifact: any,
+  functionNames: string[]
 ) {
 
-    const iface = new Interface(artifact.abi);
+  const iface = new Interface(artifact.abi);
 
-    const selectors = functionNames.map(functionName => {
-        const fragment = iface.getFunction(functionName);
+  const selectors = functionNames.map(functionName => {
+    const fragment = iface.getFunction(functionName);
 
-        if (!fragment) {
-            throw new Error(
-                `${name}: function not found in ABI: ${functionName}`
-            );
-        }
-
-        return fragment.selector;
-    });
-
-    console.log(`\nRegistering ${name}`);
-    console.log("Functions:", functionNames.length);
-
-    const tx = await factory.addFacet(
-        facetAddress,
-        selectors
-    );
-
-    console.log("Registration transaction:", tx.hash);
-
-    const receipt = await tx.wait();
-
-    if (!receipt || receipt.status !== 1) {
-        throw new Error(`${name}: registration failed`);
+    if (!fragment) {
+      throw new Error(
+        `${name}: function not found in ABI: ${functionName}`
+      );
     }
 
-    // Verify every selector
-    for (const selector of selectors) {
-        const registeredAddress = await factory.facets(selector);
+    return fragment.selector;
+  });
 
-        if (
-            registeredAddress.toLowerCase() !==
-            facetAddress.toLowerCase()
-        ) {
-            throw new Error(
-                `${name}: selector verification failed: ${selector}`
-            );
-        }
+  console.log(`\nRegistering ${name}`);
+  console.log("Functions:", functionNames.length);
+
+  const tx = await factory.addFacet(
+    facetAddress,
+    selectors
+  );
+
+  console.log("Registration transaction:", tx.hash);
+
+  const receipt = await tx.wait();
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`${name}: registration failed`);
+  }
+
+  // Verify every selector
+  for (const selector of selectors) {
+    const registeredAddress = await factory.facets(selector);
+
+    if (
+      registeredAddress.toLowerCase() !==
+      facetAddress.toLowerCase()
+    ) {
+      throw new Error(
+        `${name}: selector verification failed: ${selector}`
+      );
     }
+  }
 
-    console.log(`${name}: ${selectors.length} selectors verified`);
-    console.log("Gas used:", receipt.gasUsed.toString());
+  console.log(`${name}: ${selectors.length} selectors verified`);
+  console.log("Gas used:", receipt.gasUsed.toString());
 }
 
 // --------------------------------------------------
@@ -171,196 +171,198 @@ async function registerFacet(
 
 async function main() {
 
-    // 1. Load artifacts
+  // 1. Load artifacts
 
-    const factoryArtifact = findArtifact(["Factory"]);
-    const committeeArtifact = findArtifact(["CommitteeInspector"]);
-    const initArtifact = findArtifact(["InitFactory"]);
+  const factoryArtifact = findArtifact(["Factory"]);
+  const committeeArtifact = findArtifact(["CommitteeInspector"]);
+  const initArtifact = findArtifact(["InitFactory"]);
 
-    const visualizationArtifact = findArtifact([
-        "VisualizationFacet",
-        "Visualization"
-    ]);
+  const visualizationArtifact = findArtifact([
+    "VisualizationFacet",
+    "Visualization"
+  ]);
 
-    // 2. Connect to Anvil
+  // 2. Connect to Anvil
 
-    const provider = new JsonRpcProvider(
-        "http://127.0.0.1:8545"
+  const provider = new JsonRpcProvider(
+    "http://127.0.0.1:8545"
+  );
+
+  const privateKey = process.env.ANVIL_PRIVATE_KEY;
+
+  if (!privateKey) {
+    throw new Error("ANVIL_PRIVATE_KEY missing");
+  }
+
+  const wallet = new Wallet(privateKey, provider);
+  const signer = new NonceManager(wallet);
+
+  console.log("\nAnvil account:", wallet.address);
+
+  // 3. Deploy Factory
+  const implementationAddress = await deployFacet(
+    "FacilityRegistry",
+    registryArtifact,
+    signer
+  );
+
+  const constructorParams =
+    FacilityParamsBuilder.buildConstructorParams(
+      implementationAddress,
+      []
     );
 
-    const privateKey = process.env.ANVIL_PRIVATE_KEY;
+  const factoryBytecode =
+    factoryArtifact.bytecode.object.startsWith("0x")
+      ? factoryArtifact.bytecode.object.slice(2)
+      : factoryArtifact.bytecode.object;
 
-    if (!privateKey) {
-        throw new Error("ANVIL_PRIVATE_KEY missing");
-    }
+  const deploymentData =
+    "0x" +
+    factoryBytecode +
+    Buffer.from(constructorParams).toString("hex");
 
-    const wallet = new Wallet(privateKey, provider);
-    const signer = new NonceManager(wallet);
+  console.log("\nDeploying Factory...");
 
-    console.log("\nAnvil account:", wallet.address);
+  const factoryTx = await signer.sendTransaction({
+    data: deploymentData,
+    gasLimit: 30_000_000
+  });
 
-    // 3. Deploy Factory
+  console.log("Transaction:", factoryTx.hash);
 
-    const implementationAddress =
-        "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  const factoryReceipt = await factoryTx.wait();
 
-    const constructorParams =
-        FacilityParamsBuilder.buildConstructorParams(
-            implementationAddress,
-            []
-        );
+  if (!factoryReceipt || factoryReceipt.status !== 1) {
+    throw new Error("Factory deployment failed");
+  }
 
-    const factoryBytecode =
-        factoryArtifact.bytecode.object.startsWith("0x")
-            ? factoryArtifact.bytecode.object.slice(2)
-            : factoryArtifact.bytecode.object;
+  const factoryAddress = factoryReceipt.contractAddress;
 
-    const deploymentData =
-        "0x" +
-        factoryBytecode +
-        Buffer.from(constructorParams).toString("hex");
+  if (!factoryAddress) {
+    throw new Error("Factory address unavailable");
+  }
 
-    console.log("\nDeploying Factory...");
+  console.log("Factory deployed:", factoryAddress);
+  console.log("Gas used:", factoryReceipt.gasUsed.toString());
 
-    const factoryTx = await signer.sendTransaction({
-        data: deploymentData,
-        gasLimit: 30_000_000
-    });
+  // 4. Deploy facet implementations
 
-    console.log("Transaction:", factoryTx.hash);
+  const committeeAddress = await deployFacet(
+    "CommitteeInspector",
+    committeeArtifact,
+    signer
+  );
 
-    const factoryReceipt = await factoryTx.wait();
+  const initAddress = await deployFacet(
+    "InitFactory",
+    initArtifact,
+    signer
+  );
 
-    if (!factoryReceipt || factoryReceipt.status !== 1) {
-        throw new Error("Factory deployment failed");
-    }
+  const visualizationAddress = await deployFacet(
+    "Visualization",
+    visualizationArtifact,
+    signer
+  );
 
-    const factoryAddress = factoryReceipt.contractAddress;
+  // 5. Connect to Factory
 
-    if (!factoryAddress) {
-        throw new Error("Factory address unavailable");
-    }
+  const factory = new Contract(
+    factoryAddress,
+    factoryArtifact.abi,
+    signer
+  );
 
-    console.log("Factory deployed:", factoryAddress);
-    console.log("Gas used:", factoryReceipt.gasUsed.toString());
+  // 6. Register CommitteeInspector selectors
 
-    // 4. Deploy facet implementations
+  await registerFacet(
+    "CommitteeInspector",
+    factory,
+    committeeAddress,
+    committeeArtifact,
+    [
+      "generate_new_committee",
+      "rank_candidates",
+      "getCurrentInspectors",
+      "become_candidate",
+      "quit_candidateship",
+      "InspectorSignContract",
+      "change_candidate_documents",
+      "set_committee_member",
+      "remove_committee_member"
+    ]
+  );
 
-    const committeeAddress = await deployFacet(
-        "CommitteeInspector",
-        committeeArtifact,
-        signer
-    );
+  // 7. Register Visualization selectors
 
-    const initAddress = await deployFacet(
-        "InitFactory",
-        initArtifact,
-        signer
-    );
+  await registerFacet(
+    "Visualization",
+    factory,
+    visualizationAddress,
+    visualizationArtifact,
+    [
+      "getFactoryDocs",
+      "getDeployedFacilities",
+      "getFacilityCount",
+      "getFactoryLegalContracts",
+      "getInspectorLegalContract",
+      "getFacilityGlobalInfo",
+      "getFacilityDocs",
+      "getFacilitySignedContracts",
+      "getFacilitiesFromSignedContract",
+      "getFacilityCommitteeMembers",
+      "getCurrentCommittee",
+      "get_top_6_votes",
+      "get_number_of_voters",
+      "getFacilityInspector",
+      "getInspectorFacilities",
+      "getDAO",
+      "getCandidates",
+      "getFacilityExistenceStatus",
+      "view_staked_members",
+      "memberStake",
+      "CandidateIsCompliant",
+      "votes_frozen",
+      "latest_committee_generation_timestamp"
+    ]
+  );
 
-    const visualizationAddress = await deployFacet(
-        "Visualization",
-        visualizationArtifact,
-        signer
-    );
+  // 8. Register InitFactory selectors
 
-    // 5. Connect to Factory
+  await registerFacet(
+    "InitFactory",
+    factory,
+    initAddress,
+    initArtifact,
+    [
+      "createFacility",
+      "removeFacilityFromPlatform",
+      "updateFacilityMeta",
+      "addFacilityDocument",
+      "replaceFacilityDocument",
+      "SignTangibleContract",
+      "setLogo",
+      "setPlatformDocs"
+    ]
+  );
 
-    const factory = new Contract(
-        factoryAddress,
-        factoryArtifact.abi,
-        signer
-    );
+  // 9. Final summary
 
-    // 6. Register CommitteeInspector selectors
+  console.log("\n======================================");
+  console.log("FACTORY DEPLOYMENT COMPLETE");
+  console.log("======================================");
 
-    await registerFacet(
-        "CommitteeInspector",
-        factory,
-        committeeAddress,
-        committeeArtifact,
-        [
-            "generate_new_committee",
-            "rank_candidates",
-            "getCurrentInspectors",
-            "become_candidate",
-            "quit_candidateship",
-            "InspectorSignContract",
-            "change_candidate_documents",
-            "set_committee_member",
-            "remove_committee_member"
-        ]
-    );
+  console.log("Factory:             ", factoryAddress);
+  console.log("CommitteeInspector:  ", committeeAddress);
+  console.log("InitFactory:         ", initAddress);
+  console.log("Visualization:       ", visualizationAddress);
 
-    // 7. Register Visualization selectors
-
-    await registerFacet(
-        "Visualization",
-        factory,
-        visualizationAddress,
-        visualizationArtifact,
-        [
-            "getFactoryDocs",
-            "getDeployedFacilities",
-            "getFacilityCount",
-            "getFactoryLegalContracts",
-            "getInspectorLegalContract",
-            "getFacilityGlobalInfo",
-            "getFacilityDocs",
-            "getFacilitySignedContracts",
-            "getFacilitiesFromSignedContract",
-            "getFacilityCommitteeMembers",
-            "getCurrentCommittee",
-            "get_top_6_votes",
-            "get_number_of_voters",
-            "getFacilityInspector",
-            "getInspectorFacilities",
-            "getDAO",
-            "getCandidates",
-            "getFacilityExistenceStatus",
-            "view_staked_members",
-            "memberStake",
-            "CandidateIsCompliant",
-            "votes_frozen",
-            "latest_committee_generation_timestamp"
-        ]
-    );
-
-    // 8. Register InitFactory selectors
-
-    await registerFacet(
-        "InitFactory",
-        factory,
-        initAddress,
-        initArtifact,
-        [
-            "createFacility",
-            "removeFacilityFromPlatform",
-            "updateFacilityMeta",
-            "addFacilityDocument",
-            "replaceFacilityDocument",
-            "SignTangibleContract",
-            "setLogo",
-            "setPlatformDocs"
-        ]
-    );
-
-    // 9. Final summary
-
-    console.log("\n======================================");
-    console.log("FACTORY DEPLOYMENT COMPLETE");
-    console.log("======================================");
-
-    console.log("Factory:             ", factoryAddress);
-    console.log("CommitteeInspector:  ", committeeAddress);
-    console.log("InitFactory:         ", initAddress);
-    console.log("Visualization:       ", visualizationAddress);
-
-    console.log("======================================");
+  console.log("======================================");
 }
 
 main().catch(error => {
-    console.error("\nDEPLOYMENT ERROR:");
-    console.error(error);
-    process.exitCode = 1;
+  console.error("\nDEPLOYMENT ERROR:");
+  console.error(error);
+  process.exitCode = 1;
 });

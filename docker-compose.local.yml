@@ -1,0 +1,217 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: verifactory-anvil
+    entrypoint: ["anvil"]
+    command:
+      - --host
+      - 0.0.0.0
+      - --chain-id
+      - "31337"
+      - --accounts
+      - "500"
+      - --mnemonic
+      - "test test test test test test test test test test test junk"
+      - --block-time
+      - "1"
+    ports:
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: verifactory-ipfs
+    ports:
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/export
+    restart: unless-stopped
+
+  forge-build:
+    image: ghcr.io/foundry-rs/foundry:latest
+    working_dir: /workspace/hashgraph
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["forge clean && forge build"]
+    volumes:
+      - .:/workspace
+    restart: "no"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  actor-init:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "cd contracts_deployment && npm ci && node local_test/anvilSimulation.cjs init",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      ANVIL_MNEMONIC: "test test test test test test test test test test test junk"
+      RANDOM_SEED: "42"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      forge-build:
+        condition: service_completed_successfully
+      anvil:
+        condition: service_healthy
+      ipfs:
+        condition: service_started
+    restart: "no"
+
+  facility-owner:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "contracts_deployment/local_test/anvilSimulation.cjs",
+        "run",
+        "facility_owner",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      FACILITY_OWNER_INTERVAL_MS: "20000"
+      ACTOR_CONCURRENCY: "8"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      actor-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  relayer:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "contracts_deployment/local_test/anvilSimulation.cjs",
+        "run",
+        "relayer",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      RELAYER_INTERVAL_MS: "15000"
+      ACTOR_CONCURRENCY: "8"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      actor-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  gateway:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "contracts_deployment/local_test/anvilSimulation.cjs",
+        "run",
+        "gateway",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      GATEWAY_INTERVAL_MS: "12000"
+      ACTOR_CONCURRENCY: "8"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      actor-init:
+        condition: service_completed_successfully
+      ipfs:
+        condition: service_started
+    restart: unless-stopped
+
+  inspector:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "contracts_deployment/local_test/anvilSimulation.cjs",
+        "run",
+        "inspector",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      INSPECTOR_INTERVAL_MS: "30000"
+      ACTOR_CONCURRENCY: "8"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      actor-init:
+        condition: service_completed_successfully
+      ipfs:
+        condition: service_started
+    restart: unless-stopped
+
+  committee:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "contracts_deployment/local_test/anvilSimulation.cjs",
+        "run",
+        "committee",
+      ]
+    environment:
+      RPC_URL: http://anvil:8545
+      IPFS_API: http://ipfs:5001/api/v0/add
+      ACTOR_DATA: /actor-data
+      DEPLOYMENT_FILE: /workspace/Simulation/deployment.json
+      COMMITTEE_INTERVAL_MS: "60000"
+      ACTOR_CONCURRENCY: "8"
+    volumes:
+      - .:/workspace
+      - actor_data:/actor-data
+      - node_modules:/workspace/contracts_deployment/node_modules
+    depends_on:
+      actor-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  ipfs_data:
+  ipfs_staging:
+  actor_data:
+  node_modules:

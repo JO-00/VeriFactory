@@ -4,7 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No npm tests configured\"",
+    "anvil:init": "node local_test/anvilSimulation.cjs init",
+    "anvil:facility-owner": "node local_test/anvilSimulation.cjs run facility_owner",
+    "anvil:relayer": "node local_test/anvilSimulation.cjs run relayer",
+    "anvil:gateway": "node local_test/anvilSimulation.cjs run gateway",
+    "anvil:inspector": "node local_test/anvilSimulation.cjs run inspector",
+    "anvil:committee": "node local_test/anvilSimulation.cjs run committee"
   },
   "keywords": [],
   "author": "",

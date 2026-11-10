@@ -1,0 +1,9 @@
+to extract the event.jsonl concerning the simulated workflow execute
+
+```bash
+docker compose -f docker-compose.local.yml exec gateway cat /actor-data/events.jsonl > events.jsonl
+```
+execute this for a live view of events happening
+```bash
+docker compose -f docker-compose.local.yml exec gateway cat /actor-data/events.jsonl > events.jsonl
+```

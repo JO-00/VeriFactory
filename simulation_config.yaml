@@ -1,0 +1,18 @@
+simulation:
+  facilities: 10
+  per_facility:
+    owners: 1
+    relayers:
+      min: 5
+      max: 15
+    gateways:
+      min: 10
+      max: 25
+  inspectors:
+    min: 3
+    max: 10
+  committee:
+    min: 3
+    max: 7
+  wallet_funding:
+    strategy: lazy

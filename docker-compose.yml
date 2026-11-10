@@ -1,0 +1,45 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: verifactory-anvil
+    entrypoint: ["anvil"]
+    command:
+      - --host
+      - 0.0.0.0
+      - --chain-id
+      - "31337"
+    ports:
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: verifactory-ipfs
+    ports:
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/export
+    restart: unless-stopped
+
+  simulation-generator:
+    build:
+      context: .
+      dockerfile: simulation/Dockerfile
+    container_name: verifactory-simulation-generator
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: ["python", "-m", "Simulation.Workflow.Init.generator"]
+    profiles: ["tools"]
+
+volumes:
+  ipfs_data:
+  ipfs_staging:

@@ -1,1 +1,2 @@
 @hiero-ledger/=lib/@hiero-ledger/hiero-contracts/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
