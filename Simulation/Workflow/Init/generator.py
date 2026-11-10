@@ -110,6 +110,7 @@ def assign_private_keys(
             ],
             Logo=facility_info.Logo_IPFS,
             actors=actors,          # lowercase — matches the field name
+            LandingPageURI=facility_examples[i].LandingPageURI
         )
         facilities.append(facility)
 

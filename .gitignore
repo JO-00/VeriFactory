@@ -4,3 +4,5 @@ specs.md
 Simulation/Workflow/Init/ecdsa_keys.csv
 Simulation/Workflow/Init/facilities.json
 lib/
+**/__pycache__
+frontends_for_facilities
