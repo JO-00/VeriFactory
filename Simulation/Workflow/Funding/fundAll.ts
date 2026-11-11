@@ -1,3 +1,5 @@
+
+
 import {
   Client,
   TransferTransaction,
@@ -12,30 +14,36 @@ import * as path from "path";
 
 config();
 
-// Allocation amounts in HBAR
+// Allocations
 const AMOUNTS = {
-  Owner: 5,
-  DAOMembers: 2,
-  Relayers: 2,
-  Candidates: 2,
-  Gateways: 1,
+  Owner: 5,       // HBAR
+  DAOMembers: 2,  // Tinybars
+  Relayers: 2,    // Tinybars
+  Candidates: 2,  // Tinybars
+  Gateways: 1,    // Tinybar
 };
 
 let successfulTransfers = 0;
 let failedTransfers = 0;
 let totalHbarSent = 0;
+let totalTinybarsSent = 0;
 
 /**
- * Send HBAR to an EVM address derived from a recipient private key.
+ * Send HBAR or tinybars to an EVM address.
  */
 async function sendTinybarsToEvm(
   client: Client,
   senderPrivateKey: PrivateKey,
   senderAccountId: AccountId,
   receiverEvmAddress: string,
-  amountInHbar: number
+  amount: number,
+  isOwner: boolean
 ) {
-  const amountInTinybars = Hbar.from(amountInHbar).toTinybars();
+  // Owner allocation is converted from HBAR.
+  // Other actors receive the exact tinybar amount.
+  const amountInTinybars = isOwner
+    ? Hbar.from(amount).toTinybars()
+    : BigInt(amount);
 
   const transferTx = new TransferTransaction()
     .addHbarTransfer(
@@ -50,10 +58,10 @@ async function sendTinybarsToEvm(
   // Freeze transaction
   const frozenTx = transferTx.freezeWith(client);
 
-  // Sign with sender's private key
+  // Sign with operator private key
   const signedTx = await frozenTx.sign(senderPrivateKey);
 
-  // Execute transaction
+  // Execute
   const response = await signedTx.execute(client);
 
   // Get receipt
@@ -63,7 +71,7 @@ async function sendTinybarsToEvm(
 }
 
 /**
- * Derive recipient EVM address and fund it.
+ * Derive EVM address and fund actor.
  */
 async function fundActor(
   client: Client,
@@ -74,7 +82,10 @@ async function fundActor(
   actorType: string
 ) {
   try {
-    if (!actorPrivateKey || typeof actorPrivateKey !== "string") {
+    if (
+      typeof actorPrivateKey !== "string" ||
+      !actorPrivateKey.trim()
+    ) {
       console.warn(`Skipping empty ${actorType} private key.`);
       return;
     }
@@ -86,24 +97,29 @@ async function fundActor(
     const receiverEvmAddress =
       receiverKey.publicKey.toEvmAddress();
 
-    console.log(
-      `\nFunding ${actorType}: ${receiverEvmAddress}`
-    );
+    const isOwner = actorType === "Owner";
+
+    console.log(`\nFunding ${actorType}`);
+    console.log(`Address: ${receiverEvmAddress}`);
 
     const { receipt } = await sendTinybarsToEvm(
       client,
       operatorKey,
       operatorId,
       receiverEvmAddress,
-      amount
+      amount,
+      isOwner
     );
 
-    console.log(
-      `SUCCESS: ${amount} HBAR | ${receipt.status}`
-    );
+    console.log(`SUCCESS: ${receipt.status}`);
 
     successfulTransfers++;
-    totalHbarSent += amount;
+
+    if (isOwner) {
+      totalHbarSent += amount;
+    } else {
+      totalTinybarsSent += amount;
+    }
 
   } catch (error) {
     console.error(`FAILED funding ${actorType}:`, error);
@@ -130,7 +146,7 @@ async function main() {
   );
 
   try {
-    // Load facilities JSON
+    // Load JSON configuration
     const configPath = path.resolve(
       __dirname,
       "../Init/full_config.json"
@@ -141,9 +157,7 @@ async function main() {
 
     const facilities = data.Facilities || [];
 
-    console.log(
-      `Found ${facilities.length} facilities.\n`
-    );
+    console.log(`Found ${facilities.length} facilities.\n`);
 
     for (const [index, facility] of facilities.entries()) {
       console.log(
@@ -152,14 +166,13 @@ async function main() {
 
       const actors = facility.actors || {};
 
-      // Owner: single private key or array
+      // Normalize Owner: single private key or array
       const owners = Array.isArray(actors.Owner)
         ? actors.Owner
         : actors.Owner
           ? [actors.Owner]
           : [];
 
-      // Actor groups and their allocations
       const actorGroups = [
         {
           name: "Owner",
@@ -191,7 +204,7 @@ async function main() {
       for (const group of actorGroups) {
         if (!Array.isArray(group.keys)) {
           console.warn(
-            `Invalid ${group.name} private key list. Skipping.`
+            `Invalid ${group.name} list. Skipping.`
           );
           continue;
         }
@@ -212,7 +225,8 @@ async function main() {
     console.log("\n========== FUNDING SUMMARY ==========");
     console.log(`Successful transfers: ${successfulTransfers}`);
     console.log(`Failed transfers: ${failedTransfers}`);
-    console.log(`Total HBAR sent: ${totalHbarSent}`);
+    console.log(`Total HBAR allocated to Owners: ${totalHbarSent}`);
+    console.log(`Total tinybars allocated to other actors: ${totalTinybarsSent}`);
 
     if (failedTransfers > 0) {
       console.log("\nFunding completed with errors.");
