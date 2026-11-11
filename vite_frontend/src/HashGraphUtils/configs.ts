@@ -1,0 +1,1 @@
+export const FACTORY_CONTRACT_ADDRESS : string = "0.0.11394765";
