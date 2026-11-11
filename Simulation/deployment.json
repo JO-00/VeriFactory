@@ -1,21 +1,21 @@
 {
   "chainId": 31337,
   "rpcUrl": "http://anvil:8545",
-  "deployedAt": "2026-11-10T19:00:41.565Z",
+  "deployedAt": "2026-11-11T13:41:18.195Z",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "prng": {
-    "address": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
-    "txHash": "0xe34ca6e366f272457e3845994959edd9d326a646fdd556f6aa4dad473171ff99",
+    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "txHash": "0x369e04833f923306e1128df3315ae05b931e57dd3fa0760d1d807ac39af95ee1",
     "installedAt": "0x0000000000000000000000000000000000000169"
   },
-  "factory": "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
-  "facilityImplementation": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+  "factory": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "facilityImplementation": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
   "facets": {
-    "committeeInspector": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1",
-    "initFactory": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
-    "visualization": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"
+    "committeeInspector": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "initFactory": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "visualization": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
   },
-  "simulationTelemetry": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+  "simulationTelemetry": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
   "artifactNames": {
     "factory": "Factory",
     "committeeInspector": "CommitteeInspector",
@@ -28,7 +28,7 @@
     {
       "id": "facility-001",
       "name": "VeriFactory facility-001",
-      "address": "0x524F04724632eED237cbA3c37272e018b3A7967e",
+      "address": "0x75537828f2ce51be7289709686A69CbFDbB714F1",
       "owner": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
       "relayers": 5,
       "gateways": 10
@@ -36,7 +36,7 @@
     {
       "id": "facility-002",
       "name": "VeriFactory facility-002",
-      "address": "0x16eBC21B3d38Db5e3EE1a022bEBA8Ec87D4CDbe6",
+      "address": "0xE451980132E65465d0a498c53f0b5227326Dd73F",
       "owner": "0xbDA5747bFD65F08deb54cb465eB87D40e51B197E",
       "relayers": 10,
       "gateways": 15
@@ -44,7 +44,7 @@
     {
       "id": "facility-003",
       "name": "VeriFactory facility-003",
-      "address": "0xde46dABb403Afc77DD67B6C69Bbd44B9347AE0e7",
+      "address": "0x5392A33F7F677f59e833FEBF4016cDDD88fF9E67",
       "owner": "0x4b23D303D9e3719D6CDf8d172Ea030F80509ea15",
       "relayers": 10,
       "gateways": 15
@@ -52,7 +52,7 @@
     {
       "id": "facility-004",
       "name": "VeriFactory facility-004",
-      "address": "0xd1c0400E4D1cb3E9B5b8b7571814729E72BF7061",
+      "address": "0xa783CDc72e34a174CCa57a6d9a74904d0Bec05A9",
       "owner": "0x344dca30F5c5f74F2f13Dc1d48Ad3A9069d13Ad9",
       "relayers": 10,
       "gateways": 15
@@ -60,7 +60,7 @@
     {
       "id": "facility-005",
       "name": "VeriFactory facility-005",
-      "address": "0xA22B911699001c83EF590D86a54E8DCe4A5b6BB4",
+      "address": "0xB30dAf0240261Be564Cea33260F01213c47AAa0D",
       "owner": "0xcBDc0F9a4C38f1e010bD3B6e43598A55D1868c23",
       "relayers": 10,
       "gateways": 15
@@ -68,7 +68,7 @@
     {
       "id": "facility-006",
       "name": "VeriFactory facility-006",
-      "address": "0x49657C13115Ee8FC5999427496C1B0615fc9068e",
+      "address": "0x61ef99673A65BeE0512b8d1eB1aA656866D24296",
       "owner": "0x925EB78bEb9a84cf88dc92DF5f2FE7bF33b40104",
       "relayers": 10,
       "gateways": 15
@@ -76,7 +76,7 @@
     {
       "id": "facility-007",
       "name": "VeriFactory facility-007",
-      "address": "0x58a1779Ae28C34bA176B691e4e4dEF6d2A0545Ca",
+      "address": "0xF45bcaDCc83dea176213Ae4E22f5aF918d08647b",
       "owner": "0x00297d0b6404D57C0fa9a3D3a6998Ef28623444B",
       "relayers": 10,
       "gateways": 15
@@ -84,7 +84,7 @@
     {
       "id": "facility-008",
       "name": "VeriFactory facility-008",
-      "address": "0xC7DAd09b249A36986AdCf58D42Ed4D8C99056FB2",
+      "address": "0xeCaE6Cc78251a4F3B8d70c9BD4De1B3742338489",
       "owner": "0xB4076feC6a847622581cdfe9a8381e6e6168f597",
       "relayers": 10,
       "gateways": 15
@@ -92,7 +92,7 @@
     {
       "id": "facility-009",
       "name": "VeriFactory facility-009",
-      "address": "0x2067fe8E88780092BEf4670450b4663321A7160D",
+      "address": "0x09fe532dFA5FfcaD188ce19A70BB7645ce31a1C8",
       "owner": "0xe2abD1E57c8D6f0D21645a8a0Af6C4251a4395f5",
       "relayers": 10,
       "gateways": 15
@@ -100,7 +100,7 @@
     {
       "id": "facility-010",
       "name": "VeriFactory facility-010",
-      "address": "0x405666A9032B297C9186Dd1F1e5ACC3120Ec47E9",
+      "address": "0x53F3788A62b46B8a45484F928Ef182Fd2c149C2b",
       "owner": "0xeBc9C23d79a08Ed2F8043b9128892Db42c870a6a",
       "relayers": 11,
       "gateways": 18
