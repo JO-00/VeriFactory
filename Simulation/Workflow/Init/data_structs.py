@@ -27,6 +27,15 @@ class FacilityEntry(BaseModel):
     LandingPageURI : str
 
 
+class Candidate(BaseModel):
+    Wallet : str
+    IsCompliant : bool # this means if the candidate really signed the compliance contract or not, if he didnt sign, we're not allowed to vote on him
+
+class FullConfig(BaseModel):
+    Facilities : list[FacilityEntry]
+    Candidates : list[Candidate]
+
+
 class ExampleFacilityInfo(BaseModel):
     Name : str
     SectorType: str

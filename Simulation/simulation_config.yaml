@@ -4,11 +4,11 @@ simulation:
   per_facility:
     owners: 1
     relayers:
-      min: 5
-      max: 15
+      min: 1
+      max: 5
     gateways:
-      min: 10
-      max: 25
+      min: 2
+      max: 10
 
   inspectors:
     min: 3

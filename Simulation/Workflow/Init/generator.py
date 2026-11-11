@@ -36,7 +36,7 @@ def generate_matrix(n_lines: int, n_columns: int) -> list[list[int]]:
 def assign_private_keys(
     keys: set[str],
     yaml_config_file_path: str = "Simulation/simulation_config.yaml",
-) -> list[FacilityEntry]:
+) -> FullConfig:
     facilities: list[FacilityEntry] = []
 
     if not os.path.exists(yaml_config_file_path):
@@ -45,6 +45,8 @@ def assign_private_keys(
     with open(yaml_config_file_path, "r", encoding="utf-8") as f:
         config_file = yaml.safe_load(f)["simulation"]
 
+    
+    
     n_facilities = config_file["facilities"]
     if n_facilities > len(facility_examples):
         raise ValueError(
@@ -72,13 +74,22 @@ def assign_private_keys(
         pool[:] = [k for k in pool if k not in chosen_set]
         return chosen
 
+    candidates = [
+                    Candidate(
+                        Wallet = key,
+                        IsCompliant = random.choice([True, False])
+                    )
+                    for key in draw(random.randint(25,35))
+                ]
+
     for i in range(n_facilities):
         facility_info = facility_examples[i]
 
         owner_privkey = draw(1)[0]
-        relayer_privkeys = draw(random.randint(relayer_min, relayer_max))
-        gateway_privkeys = draw(random.randint(gateway_min, gateway_max))
+        relayer_privkeys = draw(random.randint(relayer_min, relayer_max)) if facility_examples[i].ContractsSigned[4] else []
+        gateway_privkeys = draw(random.randint(gateway_min, gateway_max)) if facility_examples[i].ContractsSigned[4] else []
         dao_members = draw(random.randint(0, 3))
+        
 
         relayer_gateway_matrix = generate_matrix(
             len(relayer_privkeys), len(gateway_privkeys)
@@ -114,22 +125,27 @@ def assign_private_keys(
         )
         facilities.append(facility)
 
-    return facilities                # was missing before
+    return FullConfig(
+        Facilities=facilities,
+        Candidates=candidates
+    )               
 
     
 
 
 
 if __name__ == "__main__":
+    print('this is no longer meant to be ran, the private keys are already generated and encrypted and perhaps funded')
+    #exit()
     keys = generate_private_keys(1000)
 
-    facilities = assign_private_keys(set(
+    full_config = assign_private_keys(set(
         key["private_key"] for key in keys
         ))
-    adapter = TypeAdapter(list[FacilityEntry])
+    adapter = TypeAdapter(FullConfig)
 
-    with open("Simulation/Workflow/Init/facilities.json", "w", encoding="utf-8") as f:
-        f.write(adapter.dump_json(facilities, indent=2).decode("utf-8"))
+    with open("Simulation/Workflow/Init/full_config.json", "w", encoding="utf-8") as f:
+        f.write(adapter.dump_json(full_config, indent=2).decode("utf-8"))
 
 
     with open("Simulation/Workflow/Init/ecdsa_keys.csv", "w") as f:
