@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
@@ -39,9 +41,14 @@ services:
     image: ghcr.io/foundry-rs/foundry:latest
     working_dir: /workspace/hashgraph
     entrypoint: ["/bin/sh", "-c"]
-    command: ["forge clean && forge build"]
+    command:
+      - |
+        echo "Installing Solidity compiler..."
+        svm install 0.8.38 || svm install 0.8.38 || true
+        forge clean
+        forge build
     volumes:
-      - .:/workspace
+      - ../..:/workspace
     restart: "no"
     dns:
       - 8.8.8.8
@@ -64,7 +71,7 @@ services:
       ANVIL_MNEMONIC: "test test test test test test test test test test test junk"
       RANDOM_SEED: "42"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
@@ -94,7 +101,7 @@ services:
       FACILITY_OWNER_INTERVAL_MS: "20000"
       ACTOR_CONCURRENCY: "8"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
@@ -120,7 +127,7 @@ services:
       RELAYER_INTERVAL_MS: "15000"
       ACTOR_CONCURRENCY: "8"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
@@ -146,7 +153,7 @@ services:
       GATEWAY_INTERVAL_MS: "12000"
       ACTOR_CONCURRENCY: "8"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
@@ -174,7 +181,7 @@ services:
       INSPECTOR_INTERVAL_MS: "30000"
       ACTOR_CONCURRENCY: "8"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
@@ -202,7 +209,7 @@ services:
       COMMITTEE_INTERVAL_MS: "60000"
       ACTOR_CONCURRENCY: "8"
     volumes:
-      - .:/workspace
+      - ../..:/workspace
       - actor_data:/actor-data
       - node_modules:/workspace/contracts_deployment/node_modules
     depends_on:
