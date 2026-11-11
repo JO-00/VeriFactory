@@ -2,7 +2,12 @@
   "dependencies": {
     "@hiero-ledger/sdk": "^2.91.0",
     "dotenv": "^18.0.10",
-    "tsc": "^2.0.4",
+    "tsc": "^2.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

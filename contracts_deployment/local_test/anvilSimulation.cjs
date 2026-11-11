@@ -80,8 +80,17 @@ function getBytecode(artifact) {
   return raw.startsWith('0x') ? raw : `0x${raw}`;
 }
 function readConfig() {
-  const p = path.join(ROOT, 'Simulation', 'simulation_config.yaml');
-  const y = fs.readFileSync(p, 'utf8');
+  const candidates = [
+    process.env.SIMULATION_CONFIG,
+    path.join(ROOT, 'Simulation', 'localAnvilSimulation', 'simulation_config.yaml'),
+    path.join(ROOT, 'Simulation', 'simulation_config.yaml'),
+  ].filter(Boolean);
+  const configPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!configPath) {
+    throw new Error(`Simulation config not found. Checked: ${candidates.join(', ')}`);
+  }
+  console.log(`Using simulation config: ${configPath}`);
+  const y = fs.readFileSync(configPath, 'utf8');
   const one = (re, fallback) => { const m = y.match(re); return m ? Number(m[1]) : fallback; };
   const range = (name, minFallback, maxFallback) => ({
     min: one(new RegExp(`${name}:\\s*\\n\\s*min:\\s*(\\d+)`), minFallback),
@@ -111,6 +120,21 @@ let HD_ROOT;
 function actorWallet(index, provider) {
   if (!HD_ROOT) HD_ROOT = HDNodeWallet.fromPhrase(MNEMONIC, undefined, "m/44'/60'/0'/0");
   return new Wallet(HD_ROOT.deriveChild(index).privateKey, provider);
+}
+
+// Keep one nonce manager per signing account for the lifetime of this process.
+// Recreating Wallet instances for the same address can cause stale nonce reads
+// when several sequential transactions are sent by that account.
+const NONCE_MANAGERS = new Map();
+function managedWallet(privateKey, provider) {
+  const rawWallet = new Wallet(privateKey, provider);
+  const key = rawWallet.address.toLowerCase();
+  let manager = NONCE_MANAGERS.get(key);
+  if (!manager) {
+    manager = new NonceManager(rawWallet);
+    NONCE_MANAGERS.set(key, manager);
+  }
+  return manager;
 }
 async function waitForRpc(provider) {
   for (let i = 0; i < 60; i++) {
@@ -189,7 +213,10 @@ async function bootstrap() {
   const prngArtifact = artifactPath('AnvilPrng');
   const telemetryArtifact = artifactPath('SimulationTelemetry');
 
-  const deployer = actorWallet(0, provider);
+  // Account 0 performs most bootstrap deployments and registrations. Use one
+  // NonceManager for every transaction signed by this account.
+  const deployerWallet = actorWallet(0, provider);
+  const deployer = managedWallet(deployerWallet.privateKey, provider);
   const prng = await installPrng(provider, deployer, prngArtifact);
   const implementation = await deploy('FacilityRegistry implementation', facilityArtifact, deployer);
   const timestamp = Math.floor(Date.now() / 1000);
@@ -277,8 +304,7 @@ async function bootstrap() {
   const viz = new Contract(factoryDeployment.address, visualizationArtifact.abi, provider);
   console.log(`Provisioning ${facilities.length} facilities, ${relayerActors.length} relayers, ${gatewayActors.length} gateways, ${inspectors.length} inspectors and ${committeeActors.length} committee members...`);
   for (const facility of facilities) {
-    const rawOwnerWallet = new Wallet(facility.owner.privateKey, provider);
-    const ownerWallet = new NonceManager(rawOwnerWallet);
+    const ownerWallet = managedWallet(facility.owner.privateKey, provider);
     const initAsOwner = initContract.connect(ownerWallet);
     const initialGateways = facility.gateways.map((g) => ({ id: g.gatewayId, key: g.address, relayer: g.relayerAddress }));
     const tx = await initAsOwner.createFacility(
@@ -325,7 +351,7 @@ async function bootstrap() {
   const committeeFacet = new Contract(factoryDeployment.address, committeeArtifact.abi, deployer);
   for (let i = 0; i < committeeActors.length; i++) {
     const facility = facilities[Math.floor(i / 3)];
-    const ownerWallet = new Wallet(facility.owner.privateKey, provider);
+    const ownerWallet = managedWallet(facility.owner.privateKey, provider);
     const asOwner = committeeFacet.connect(ownerWallet);
     const fee = i % 3 === 0 ? 25_000_000n : 100_000_000n;
     const tx = await asOwner.set_committee_member(committeeActors[i].address, facility.address, { value: fee });
@@ -337,12 +363,15 @@ async function bootstrap() {
 
   // Inspector candidacy and contract compliance signatures.
   for (const inspector of inspectors) {
-    const wallet = new Wallet(inspector.privateKey, provider);
+    // Keep the raw wallet for off-chain signing; use its cached NonceManager
+    // for both on-chain transactions from this inspector.
+    const rawWallet = new Wallet(inspector.privateKey, provider);
+    const wallet = managedWallet(inspector.privateKey, provider);
     const asInspector = committeeFacet.connect(wallet);
     let tx = await asInspector.become_candidate([]);
     await tx.wait();
     const messageHash = keccak256(toUtf8Bytes(INSPECTOR_DOC.cid));
-    const signature = wallet.signMessage ? await wallet.signMessage(getBytes(messageHash)) : null;
+    const signature = await rawWallet.signMessage(getBytes(messageHash));
     const sig = require('ethers').Signature.from(signature);
     tx = await asInspector.InspectorSignContract(sig.v, sig.r, sig.s);
     const receipt = await tx.wait();
@@ -354,7 +383,7 @@ async function bootstrap() {
   await tx.wait();
   const preferences = inspectors.slice(0, 5).map((a) => a.address);
   for (const member of committeeActors) {
-    const wallet = new Wallet(member.privateKey, provider);
+    const wallet = managedWallet(member.privateKey, provider);
     tx = await committeeFacet.connect(wallet).rank_candidates(preferences);
     const receipt = await tx.wait();
     if (!receipt || receipt.status !== 1) throw new Error(`Committee vote failed for ${member.id}`);
@@ -366,7 +395,7 @@ async function bootstrap() {
     chainId: Number(network.chainId),
     rpcUrl: RPC_URL,
     deployedAt: new Date().toISOString(),
-    deployer: deployer.address,
+    deployer: deployerWallet.address,
     prng,
     factory: factoryDeployment.address,
     facilityImplementation: implementation.address,
@@ -446,7 +475,7 @@ async function runRole(role) {
   for (; ;) {
     cycle++;
     await mapLimit(selected, concurrency, async (actor) => {
-      const wallet = new Wallet(actor.privateKey, provider);
+      const wallet = managedWallet(actor.privateKey, provider);
       if (role === 'facility_owner') {
         if (!actor.gatewayIds.length) return;
         const facility = new Contract(actor.facilityAddress, facilityArtifact.abi, wallet);
