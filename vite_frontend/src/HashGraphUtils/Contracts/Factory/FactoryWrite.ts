@@ -24,6 +24,22 @@ export class FactoryWriteContract {
     return Buffer.from(hexString.replace("0x", ""), "hex");
   }
 
+  private static async execute(signer : Signer, params : Uint8Array, gas : number, fee?: string){
+    const contractId = await this.getContractId();
+    let transaction = new ContractExecuteTransaction()
+      .setContractId(contractId)
+      .setFunctionParameters(params)
+      .setGas(gas);
+    console.log(fee)
+
+    if (fee) transaction = transaction.setPayableAmount(Number(fee) / 100_000_000);
+
+    const response = await transaction.executeWithSigner(signer);
+
+    return await response.getReceipt(Client.forTestnet());
+
+  }
+
   // ==========================================
   // IInitFactory Functions
   // ==========================================
@@ -38,7 +54,6 @@ export class FactoryWriteContract {
     contracts: DocumentInput[],
     gas: number = 3_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("createFacility", [
       name,
       location,
@@ -48,18 +63,7 @@ export class FactoryWriteContract {
       contracts,
     ]);
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async addFacilityDocument(
@@ -70,7 +74,6 @@ export class FactoryWriteContract {
     title: string,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("addFacilityDocument", [
       facilityAddress,
       cid,
@@ -78,18 +81,7 @@ export class FactoryWriteContract {
       title,
     ]);
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async replaceFacilityDocument(
@@ -101,7 +93,6 @@ export class FactoryWriteContract {
     newTitle: string,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("replaceFacilityDocument", [
       facilityAddress,
       oldCid,
@@ -110,18 +101,7 @@ export class FactoryWriteContract {
       newTitle,
     ]);
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async signTangibleContract(
@@ -133,7 +113,6 @@ export class FactoryWriteContract {
     s: Uint8Array | string,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("SignTangibleContract", [
       documentCid,
       facilityAddress,
@@ -141,19 +120,9 @@ export class FactoryWriteContract {
       r,
       s,
     ]);
+    console.log(`v= ${v}\nr= ${r}\ns = ${s}`)
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   // ==========================================
@@ -164,21 +133,8 @@ export class FactoryWriteContract {
     signer: Signer,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("generate_new_committee", []);
-
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async rankCandidates(
@@ -186,21 +142,8 @@ export class FactoryWriteContract {
     preferences: string[],
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("rank_candidates", [preferences]);
-
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async becomeCandidate(
@@ -208,41 +151,36 @@ export class FactoryWriteContract {
     attachedDocuments: string[],
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("become_candidate", [attachedDocuments]);
-
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
 
   static async quitCandidateship(
     signer: Signer,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    const contractId = await this.getContractId();
     const parameters = this.encodeData("quit_candidateship", []);
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(contractId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
-
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
-
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
-
-    return receipt;
+    return await this.execute(signer, parameters , gas);
   }
+  static async setCommitteeMember(
+    signer : Signer,
+    facilityAddress : string,
+    newCommitteeMemberAddress : string,
+    fee : string,
+    gas: number = 1_000_000
+  ){
+    const parameters = this.encodeData("set_committee_member",[newCommitteeMemberAddress , facilityAddress]);
+    return await this.execute(signer, parameters , gas, fee);
+  }
+  static async removeCommitteeMember(
+    signer : Signer,
+    facilityAddress : string,
+    newCommitteeMemberAddress : string,
+    gas: number = 1_000_000
+  ){
+    const parameters = this.encodeData("remove_committee_member",[newCommitteeMemberAddress , facilityAddress]);
+    return await this.execute(signer, parameters , gas);
+  }
+
 }

@@ -18,7 +18,9 @@ import {
   authenticateFacility,
 } from '../../Functionalities/getFacilityInfo';
 import { useWallet } from '../../Common/WalletProvider';
-import FacilityDashboard from '../FacilityDashboard/FacilityDashboard';
+import FacilityDashboard, {
+  FACILITY_DASHBOARD_STORAGE_KEY,
+} from '../FacilityDashboard/FacilityDashboard';
 import FacilityCreationForm from './FacilityCreationForm';
 import FacilityEntry from './../FacilityDashboard/FacilityEntry';
 import { UserFacilityRole } from '../../types';
@@ -44,6 +46,23 @@ interface HydratedFacility {
   docs: string[];
 }
 
+// ── Safe localStorage helpers ──
+const readStoredFacility = (): string | null => {
+  try {
+    return localStorage.getItem(FACILITY_DASHBOARD_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const clearStoredFacility = () => {
+  try {
+    localStorage.removeItem(FACILITY_DASHBOARD_STORAGE_KEY);
+  } catch {
+    // ignore (private mode / quota)
+  }
+};
+
 const FacilityList: React.FC = () => {
   const { signer, isConnected } = useWallet();
 
@@ -57,6 +76,16 @@ const FacilityList: React.FC = () => {
     uri: string;
     facilityAddress: string;
   } | null>(null);
+
+  // ── Restore-from-storage bootstrap ──
+  // If localStorage says we were on a dashboard, we need to
+  // (a) hide the list view while we re-authenticate, and
+  // (b) re-derive role/result because those aren't persisted.
+  const [storedAddress] = useState<string | null>(readStoredFacility);
+  const [bootstrapping, setBootstrapping] = useState<boolean>(
+    () => storedAddress !== null
+  );
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   const [view, setView] = useState<View>({ kind: 'list' });
   const [authLoading, setAuthLoading] = useState(false);
@@ -125,6 +154,57 @@ const FacilityList: React.FC = () => {
     };
   }, []);
 
+  // ── Bootstrap: silently re-authenticate against the stored facility ──
+  useEffect(() => {
+    if (!storedAddress) {
+      setBootstrapping(false);
+      return;
+    }
+
+    // Wait until the wallet is ready before hitting auth.
+    // Until then, keep `bootstrapping` true so the UI shows "Restoring…".
+    if (!isConnected || !signer) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const user_address = await signer.getAccountId();
+        const result = await authenticateFacility(storedAddress, user_address);
+        if (cancelled) return;
+
+        if (result.authenticated) {
+          setView({
+            kind: 'dashboard',
+            facilityAddress: result.facilityAddress,
+            role: result.role,
+            result,
+            // Don't replay the success modal on refresh — it's stale context
+            showModal: false,
+          });
+        } else {
+          // Stored facility is no longer accessible (role revoked, deleted, etc.)
+          clearStoredFacility();
+          setBootstrapError(result.message ?? 'Could not restore dashboard.');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        clearStoredFacility();
+        setBootstrapError(
+          err instanceof Error ? err.message : 'Could not restore dashboard.'
+        );
+      } finally {
+        if (!cancelled) setBootstrapping(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storedAddress, isConnected, signer]);
+
   // ── Authenticate → dispatch to dashboard by role ──
   const handleAuthenticate = useCallback(
     async (facilityAddress: string) => {
@@ -141,10 +221,6 @@ const FacilityList: React.FC = () => {
         const result = await authenticateFacility(facilityAddress, user_address);
 
         if (result.authenticated) {
-          // result.role is a UserFacilityRole enum member:
-          //   Admin → full admin + relayer UI
-          //   Relayer → relayer-only UI
-          //   Observer → read-only UI
           setView({
             kind: 'dashboard',
             facilityAddress: result.facilityAddress,
@@ -185,8 +261,28 @@ const FacilityList: React.FC = () => {
     (h) => h.contracts.length > 0 && h.contracts.length === totalContracts.length
   ).length;
 
+  // ── Return-to-list helper (used by both dashboard back + onClose) ──
+  const goBackToList = useCallback(() => {
+    clearStoredFacility();
+    setView({ kind: 'list' });
+    setBootstrapError(null);
+  }, []);
+
   // ── Render branches ──
 
+  // 1. Restoring stored dashboard on refresh — don't flash the list
+  if (bootstrapping) {
+    return (
+      <div className="text-ink">
+        <div className="text-sm text-ink-muted">Restoring dashboard…</div>
+        {bootstrapError && (
+          <div className="mt-2 text-sm text-red-600">{bootstrapError}</div>
+        )}
+      </div>
+    );
+  }
+
+  // 2. Creation form
   if (showForm) {
     return (
       <div className="text-ink">
@@ -203,44 +299,45 @@ const FacilityList: React.FC = () => {
     );
   }
 
+  // 3. Dashboard view
   if (view.kind === 'dashboard') {
     return (
       <div className="text-ink relative">
         <div className="mb-3">
           <button
-            onClick={() => setView({ kind: 'list' })}
+            onClick={goBackToList}
             className="rounded-[5px] border border-border-strong bg-surface-muted px-3 py-1.5 text-xs font-semibold text-ink hover:border-accent cursor-pointer"
           >
             ← Back to facilities
           </button>
         </div>
 
-        {/*
-          FacilityDashboard branches internally on role:
-            role === Admin  → AdminToolsSection + RelayerToolsSection
-            role === Relayer → RelayerToolsSection
-            role === Observer → read-only
-        */}
         <FacilityDashboard
           facilityAddress={view.facilityAddress}
           role={view.role}
+          onClose={goBackToList}
         />
 
         {view.showModal && (
           <SuccessModal
             result={view.result}
-            onContinue={() =>
-              setView({ ...view, showModal: false })
-            }
+            onContinue={() => setView({ ...view, showModal: false })}
           />
         )}
       </div>
     );
   }
 
-  // ── LIST VIEW ──
+  // 4. LIST VIEW
   return (
     <div className="text-ink">
+      {/* Bootstrap error surfaced after we fell back to list */}
+      {bootstrapError && (
+        <div className="mb-3 bg-[#fff8e6] border border-[#f0d58a] rounded-md px-4 py-2 text-sm text-[#7a5b00]">
+          {bootstrapError}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>

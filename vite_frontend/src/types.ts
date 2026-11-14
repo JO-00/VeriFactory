@@ -98,3 +98,34 @@ export interface FacilityAddedEvent {
   logIndex: number;
   timestamp: string;
 }
+
+export interface RelayerRegisteredEvent {
+  facilityAddress: string;
+  relayerAddress: string;
+  name: string;
+  transactionHash: string;
+  blockNumber: number;
+  transactionIndex: number;
+  logIndex: number;
+  timestamp: string;      // Raw Hedera "seconds.nanoseconds"
+  timestampMs: number;    // Inferred Unix epoch in milliseconds
+  timestampDate: Date;    // Inferred JS Date object
+}
+export interface KeyRotatedEvent {
+  facilityAddress: string;
+  gatewayId: string;
+  gatewayIdHash: string;      // Keccak-256 hash stored in topic1
+  oldKey: string;
+  newKey: string;
+  isAnomalous: boolean;
+  contractTimestamp: bigint;  // uint256 timestamp emitted by the contract
+  contractTimestampMs: number;
+  contractTimestampDate: Date;
+  transactionHash: string;
+  blockNumber: number;
+  transactionIndex: number;
+  logIndex: number;
+  timestamp: string;          // Hedera consensus "seconds.nanoseconds"
+  timestampMs: number;        // Hedera consensus Unix ms
+  timestampDate: Date;        // Hedera consensus Date
+}

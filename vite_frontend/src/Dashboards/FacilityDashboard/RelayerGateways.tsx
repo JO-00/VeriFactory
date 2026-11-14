@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  getRelayersForGateway,
   getGatewaysForRelayer,
   getGatewayStatus,
   getAllMeasurements,
@@ -17,16 +16,15 @@ import {
 import type {
   GatewayAssignedEvent,
   GatewayReassignedEvent,
-  KeyRotatedEvent,
 } from './../facillity_dashboard_mocks';
-import type { Measurement, CadencePolicy } from './../../types';
+import type { Measurement, CadencePolicy, RelayerRegisteredEvent, KeyRotatedEvent } from './../../types';
 import {
   FieldBlock,
   StatusPill,
   StatCard,
   SectionHeader,
   EmptyHint,
-  EventList,
+  EventList
 } from './DashboardUtils';
 import type {
   EntityModalProps,
@@ -34,6 +32,7 @@ import type {
   GatewayBodyProps,
 } from '../dashboard_types';
 import BigNumber from 'bignumber.js';
+import { FacilityContractRead } from '../../HashGraphUtils/Contracts/Facility/FacilityRead';
 
 // ============================================================
 // Gateway body
@@ -49,7 +48,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [relayers, setRelayers] = useState<string[]>([]);
   const [policy, setPolicy] = useState<CadencePolicy>({
     expectedInterval: BigNumber(0),
     gracePeriod: BigNumber(0),
@@ -66,8 +64,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const [r, p, m, a, ra, k] = await Promise.all([
-          getRelayersForGateway(facilityAddress, gateway),
+        const [p, m, a, ra, k] = await Promise.all([
           getGatewayStatus(facilityAddress, gateway),
           getAllMeasurements(facilityAddress, gateway),
           getGatewayAssignedEvents(facilityAddress, gateway),
@@ -75,7 +72,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
           getKeyRotatedEvents(facilityAddress, gateway),
         ]);
         if (cancelled) return;
-        setRelayers(r);
         setPolicy(p);
         setMeasurements(m);
         setAssigned(a);
@@ -146,26 +142,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
         </div>
       </section>
 
-      {/* Relayers */}
-      <section>
-        <SectionHeader icon="🔗" title="Managed by relayers" count={relayers.length} />
-        {relayers.length === 0 ? (
-          <EmptyHint>No relayers assigned.</EmptyHint>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {relayers.map((r) => (
-              <button
-                key={r}
-                onClick={() => onNavigate('relayer', r)}
-                title={r}
-                className="font-mono text-[0.72rem] px-2.5 py-1 rounded-[5px] border border-border-strong bg-surface-muted text-ink hover:border-accent hover:bg-accent-soft hover:text-accent cursor-pointer transition-colors"
-              >
-                {shortAddr(r)}
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+      
 
       {/* Measurements */}
       <section>
@@ -192,10 +169,92 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
         )}
       </section>
 
+      {/* Key Rotations */}
+      <section>
+        <SectionHeader icon="🔑" title="Key rotations" count={rotations.length} />
+        {rotations.length === 0 ? (
+          <EmptyHint>No key rotations recorded.</EmptyHint>
+        ) : (
+          <div className="space-y-2">
+            {rotations.map((rot) => (
+              <div
+                key={`${rot.transactionHash}-${rot.logIndex}`}
+                className="bg-surface-muted border border-border rounded-[5px] px-3 py-2.5 space-y-2"
+              >
+                {/* Top row: Anomaly status + Contract timestamp */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <StatusPill
+                    ok={!rot.isAnomalous}
+                    okText="Normal rotation"
+                    badText="Anomalous rotation"
+                    compact
+                  />
+                  <span className="text-[0.72rem] text-ink-muted font-mono">
+                    {formatTimestamp(rot.contractTimestampMs / 1000)}
+                  </span>
+                </div>
+
+                {/* Key transition: oldKey -> newKey */}
+                <div className="flex flex-wrap items-center gap-2 font-mono text-[0.75rem]">
+                  <span
+                    title={rot.oldKey}
+                    className="px-2 py-0.5 rounded bg-surface border border-border-strong text-ink-muted"
+                  >
+                    {shortAddr(rot.oldKey, 8, 6)}
+                  </span>
+                  <span className="text-ink-faint">→</span>
+                  <span
+                    title={rot.newKey}
+                    className="px-2 py-0.5 rounded bg-surface border border-border-strong text-ink font-semibold"
+                  >
+                    {shortAddr(rot.newKey, 8, 6)}
+                  </span>
+                </div>
+
+                {/* Mirror Node links + Consensus timestamp */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/60 text-[0.7rem] font-mono">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <a
+                      href={`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${rot.transactionHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={rot.transactionHash}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] border border-border-strong bg-surface text-ink hover:border-accent hover:bg-accent-soft hover:text-accent transition-colors"
+                    >
+                      <span className="text-ink-muted">tx:</span>
+                      <span>{shortAddr(rot.transactionHash, 10, 6)}</span>
+                      <span aria-hidden="true">↗</span>
+                    </a>
+
+                    <a
+                      href={`https://testnet.mirrornode.hedera.com/api/v1/blocks/${rot.blockNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Block #${rot.blockNumber} · tx ${rot.transactionIndex} · log ${rot.logIndex}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] border border-border-strong bg-surface text-ink hover:border-accent hover:bg-accent-soft hover:text-accent transition-colors"
+                    >
+                      <span className="text-ink-muted">block:</span>
+                      <span>
+                        #{rot.blockNumber} ({rot.transactionIndex}:{rot.logIndex})
+                      </span>
+                      <span aria-hidden="true">↗</span>
+                    </a>
+                  </div>
+
+                  <span className="text-[0.68rem] text-ink-faint italic">
+                    consensus ts: {rot.timestamp}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* History */}
       <section>
         <SectionHeader icon="🕓" title="History" />
-        <EventList assigned={assigned} reassigned={reassigned} rotations={rotations} />
+        <EventList assigned={assigned} reassigned={reassigned} rotations={[]} />
       </section>
     </div>
   );
@@ -213,7 +272,7 @@ const RelayerBody: React.FC<RelayerBodyProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gateways, setGateways] = useState<string[]>([]);
-  const [registeredAt, setRegisteredAt] = useState<number | null>(null);
+  const [registeredAt, setRegisteredAt] = useState<RelayerRegisteredEvent | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,15 +316,58 @@ const RelayerBody: React.FC<RelayerBodyProps> = ({
   return (
     <div className="space-y-6">
       {/* Registered at */}
+      {/* Registration */}
       <section>
-        <SectionHeader icon="📅" title="Registered at" />
-        <StatCard
-          label="Registration date"
-          value={registeredAt ? formatTimestamp(registeredAt) : '—'}
-        />
-        <div className="text-[0.68rem] text-ink-faint italic mt-1.5 font-mono">
-          from RelayerRegistered event
-        </div>
+        <SectionHeader icon="📅" title="Registration" />
+        {!registeredAt ? (
+          <EmptyHint>No RelayerRegistered event found.</EmptyHint>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <StatCard
+                label="Relayer name"
+                value={registeredAt.name || '—'}
+              />
+              <StatCard
+                label="Registered at"
+                value={formatTimestamp(registeredAt.timestampMs / 1000)}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem] font-mono">
+              <a
+                href={`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${registeredAt.transactionHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={registeredAt.transactionHash}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] border border-border-strong bg-surface-muted text-ink hover:border-accent hover:bg-accent-soft hover:text-accent transition-colors"
+              >
+                <span className="text-ink-muted">tx:</span>
+                <span>{shortAddr(registeredAt.transactionHash, 10, 6)}</span>
+                <span aria-hidden="true">↗</span>
+              </a>
+
+              <a
+                href={`https://testnet.mirrornode.hedera.com/api/v1/blocks/${registeredAt.blockNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Block #${registeredAt.blockNumber} · tx ${registeredAt.transactionIndex} · log ${registeredAt.logIndex}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] border border-border-strong bg-surface-muted text-ink hover:border-accent hover:bg-accent-soft hover:text-accent transition-colors"
+              >
+                <span className="text-ink-muted">block:</span>
+                <span>
+                  #{registeredAt.blockNumber} ({registeredAt.transactionIndex}:{registeredAt.logIndex})
+                </span>
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+
+            <div className="flex items-center justify-between text-[0.68rem] text-ink-faint italic font-mono">
+              <span>from RelayerRegistered event</span>
+              <span>consensus ts: {registeredAt.timestamp}</span>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Manages gateways */}
@@ -306,6 +408,47 @@ export const EntityModal: React.FC<EntityModalProps> = ({
 }) => {
   const title = selected.kind === 'gateway' ? 'Gateway' : 'Relayer';
 
+  // Resolved gateway key (only used when kind === 'gateway')
+  const [gatewayKey, setGatewayKey] = useState<string | null>(null);
+  const [gatewayError, setGatewayError] = useState<Error | null>(null);
+
+  // The gateway id is just the original address (per your pseudocode)
+  const gatewayId = selected.kind === 'gateway' ? selected.address : null;
+
+  useEffect(() => {
+  if (selected.kind !== 'gateway') {
+    return; // Don't call setState synchronously, just exit
+  }
+
+  let cancelled = false;
+
+  (async () => {
+    setGatewayKey(null);
+    setGatewayError(null);
+
+    try {
+      const key = await FacilityContractRead.getGatewayKey(
+        facilityAddress,
+        selected.address,
+      );
+      if (cancelled) return;
+      setGatewayKey(key);
+    } catch (err) {
+      if (cancelled) return;
+      setGatewayError(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [selected.kind, selected.address, facilityAddress]);
+  // What to show in the header as the "address"
+  const displayAddress =
+    selected.kind === 'gateway'
+      ? gatewayKey ?? '…'                       // loading placeholder
+      : selected.address;
+
   return (
     <div
       className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]"
@@ -321,7 +464,24 @@ export const EntityModal: React.FC<EntityModalProps> = ({
             <div className="text-[0.7rem] text-ink-muted uppercase tracking-wide">
               {title}
             </div>
-            <div className="font-mono text-[0.8rem] break-all">{selected.address}</div>
+            {selected.kind === 'relayer' && (
+              <div className="font-mono text-[0.8rem] break-all">
+                {selected.id}
+              </div>
+            )}
+            {selected.kind === 'gateway' && gatewayId && (
+              <div className="font-mono text-[0.8rem] break-all">
+                id: {gatewayId}
+              </div>
+            )}
+            <div className="font-mono text-[0.8rem] break-all">
+              {displayAddress}
+            </div>
+            {gatewayError && (
+              <div className="text-[0.7rem] text-red-500">
+                Failed to resolve gateway key: {gatewayError.message}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {page.kind !== 'overview' && (
@@ -346,7 +506,7 @@ export const EntityModal: React.FC<EntityModalProps> = ({
           {selected.kind === 'gateway' && (
             <GatewayBody
               facilityAddress={facilityAddress}
-              gateway={selected.address}
+              gateway={displayAddress}
               page={page}
               setPage={setPage}
               onNavigate={onNavigate}

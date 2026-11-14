@@ -1,22 +1,26 @@
 // ============== FacilityDashboard.tsx ==============
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   getAllGateways,
   getAllRelayers,
-  getAllBannedGateways,
   getGatewayStatus,
   getFacilityAddedEvent,
   getPublicURI,
   isInEmergency,
   getGatewaysForRelayer,
+  getFacilityDaoMembers,
+  getFacilitySignedContracts,
 } from './../facillity_dashboard_mocks';
-import type { CadencePolicy, FacilityAddedEvent } from './../../types';
+import type { CadencePolicy, FacilityAddedEvent, StakedMember } from './../../types';
+import { SignContractModal } from './../../Components/SignContractsModal';
+import { FactoryWriteContract } from '../../HashGraphUtils/Contracts/Factory/FactoryWrite';
 import { UserFacilityRole } from './../../types';
 import type { ModalPage } from './../dashboard_types';
 import { useWallet } from './../../Common/WalletProvider';
 import { EntityModal } from './RelayerGateways';
-import { resolveEvmAddress } from '../../Functionalities/getFacilityInfo';
+import { resolveEvmAddress, getAllContracts } from '../../Functionalities/getFacilityInfo';
+import { SignContractsPanel } from './SignContractsPanel';
 import {
   FacilityHeader,
   StatusStrip,
@@ -24,31 +28,49 @@ import {
   RelayerToolsSection,
   AdminToolsSection,
   GatewaysGrid,
-  BannedGatewaysSection,
   RelayersGrid,
   URIPreviewModal,
 } from './FacilityDashboardSection';
 import { FacilityGlanceBar } from './FacilityGlanceBar';
 import { useFacilityToolHandlers } from './useFacilityToolHandlers';
+import {
+  DAOMembersCard,
+  DAOMembersModal,
+} from './../../Components/DAOMemberCard';
 
 type SelectedEntity =
-  | { kind: 'gateway'; address: string }
+  | { kind: 'gateway'; address: string; id?: string }
   | { kind: 'relayer'; address: string }
   | null;
 
 interface FacilityDashboardProps {
   facilityAddress: string;
   role: UserFacilityRole;
+  onClose?: () => void;
 }
+
+export const FACILITY_DASHBOARD_STORAGE_KEY = 'lastFacilityAddress';
 
 const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
   facilityAddress,
   role,
+  onClose,
 }) => {
-  const { signer, accountId, isConnected } = useWallet();
+  const { signer, accountId, isConnected, personalSign } = useWallet();
 
   const isAdmin = role === UserFacilityRole.Admin;
   const isRelayer = role === UserFacilityRole.Relayer || isAdmin;
+
+  // ── Persist the current facility across refreshes ──
+  useEffect(() => {
+    if (facilityAddress) {
+      try {
+        localStorage.setItem(FACILITY_DASHBOARD_STORAGE_KEY, facilityAddress);
+      } catch {
+        // ignore quota / private mode
+      }
+    }
+  }, [facilityAddress]);
 
   // ── Loaded data ──
   const [loading, setLoading] = useState(true);
@@ -57,12 +79,33 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
 
   const [gateways, setGateways] = useState<string[]>([]);
   const [relayers, setRelayers] = useState<string[]>([]);
-  const [bannedGateways, setBannedGateways] = useState<string[]>([]);
   const [facility, setFacility] = useState<FacilityAddedEvent | null>(null);
   const [emergency, setEmergency] = useState(false);
   const [myGateways, setMyGateways] = useState<string[]>([]);
   const [cadenceCache, setCadenceCache] = useState<Record<string, CadencePolicy>>({});
   const [publicURI, setPublicURIState] = useState('');
+
+  // ── DAO members ──
+  const [daoMembers, setDaoMembers] = useState<StakedMember[]>([]);
+  const [daoLoading, setDaoLoading] = useState(true);
+  const [daoModalOpen, setDaoModalOpen] = useState(false);
+
+  // ── Signed contracts ──
+  const [allContracts, setAllContracts] = useState<string[]>([]);
+  const [signedContracts, setSignedContracts] = useState<string[]>([]);
+  const [signModalCid, setSignModalCid] = useState<string | null>(null);
+
+  const refreshDao = useCallback(async () => {
+    setDaoLoading(true);
+    try {
+      const list = await getFacilityDaoMembers(facilityAddress);
+      setDaoMembers(list);
+    } catch (err) {
+      console.error('[FacilityDashboard] DAO members load failed', err);
+    } finally {
+      setDaoLoading(false);
+    }
+  }, [facilityAddress]);
 
   // ── Load ──
   useEffect(() => {
@@ -74,50 +117,53 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
       setFacilityMissing(false);
 
       try {
-        // 1. Facility event gates everything else — fetch first.
         const fa = await getFacilityAddedEvent(facilityAddress);
         if (cancelled) return;
 
         if (!fa) {
           setFacility(null);
           setFacilityMissing(true);
-          return; // skip the entire RPC fan-out
+          return;
         }
 
         setFacility(fa);
 
-        // 2. Now fan out.
-        const [gw, rl, banned, em, uri] = await Promise.all([
+        const [gw, rl, em, uri, cs, sig] = await Promise.all([
           getAllGateways(facilityAddress),
           getAllRelayers(facilityAddress),
-          getAllBannedGateways(facilityAddress),
           isInEmergency(facilityAddress),
           getPublicURI(facilityAddress),
+          getAllContracts(),
+          getFacilitySignedContracts(facilityAddress),
         ]);
         if (cancelled) return;
 
         setGateways(gw);
         setRelayers(rl);
-        setBannedGateways(banned);
         setEmergency(em);
         setPublicURIState(uri);
+        setAllContracts(cs);
+        setSignedContracts(sig);
 
         const cadencePairs = await Promise.all(
-          gw.map(async (g) => [g, await getGatewayStatus(g, facilityAddress)] as const)
+          gw.map(async (g) => [g, await getGatewayStatus(facilityAddress, g)] as const)
         );
         if (cancelled) return;
         setCadenceCache(Object.fromEntries(cadencePairs));
 
         if (isRelayer && isConnected && accountId) {
           const mine = await getGatewaysForRelayer(
-            await resolveEvmAddress(accountId),
-            facilityAddress
+            facilityAddress,
+            await resolveEvmAddress(accountId)
           );
           if (cancelled) return;
           setMyGateways(mine);
         } else {
           setMyGateways([]);
         }
+
+        // DAO members — fire after main load, non-blocking
+        refreshDao();
       } catch (err: unknown) {
         if (!cancelled) {
           setLoadError(
@@ -132,16 +178,15 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [facilityAddress, isRelayer, isConnected, accountId]);
+  }, [facilityAddress, isRelayer, isConnected, accountId, refreshDao]);
 
   // ── UI state ──
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [page, setPage] = useState<ModalPage>({ kind: 'overview' });
   const [showURIPreview, setShowURIPreview] = useState(false);
 
-  // ── Scroll targets for glance-bar stats ──
+  // ── Scroll targets ──
   const gatewaysRef = React.useRef<HTMLDivElement>(null);
-  const bannedRef = React.useRef<HTMLDivElement>(null);
   const relayersRef = React.useRef<HTMLDivElement>(null);
 
   const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
@@ -158,6 +203,15 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
   };
   const switchToEntity = (kind: 'gateway' | 'relayer', address: string) =>
     openEntity(kind, address);
+
+  const closeDashboard = () => {
+    try {
+      localStorage.removeItem(FACILITY_DASHBOARD_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    onClose?.();
+  };
 
   // ── Handlers + modals (custom hook) ──
   const {
@@ -176,6 +230,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
     myGateways,
     relayers,
     gateways,
+    daoMembers,
     setPublicURIState,
   });
 
@@ -230,11 +285,30 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         facility={facility}
         gatewayCount={gateways.length}
         relayerCount={relayers.length}
-        bannedCount={bannedGateways.length}
         onSelectGateways={() => scrollTo(gatewaysRef)}
         onSelectRelayers={() => scrollTo(relayersRef)}
-        onSelectBanned={() => scrollTo(bannedRef)}
+        onSelectBanned={() => scrollTo(relayersRef)}
       />
+
+      {/* DAO members — clickable card, visible to everyone */}
+      <div className="mb-4 max-w-xs">
+        <DAOMembersCard
+          members={daoMembers}
+          loading={daoLoading}
+          onOpenModal={() => setDaoModalOpen(true)}
+        />
+      </div>
+
+      {/* Admin: sign contracts */}
+      {isAdmin && (
+        <SignContractsPanel
+          facilityAddress={facilityAddress}
+          signer={signer}
+          allContracts={allContracts}
+          signedContracts={signedContracts}
+          onOpenSign={(cid) => setSignModalCid(cid)}
+        />
+      )}
 
       <FacilityInfoSection facility={facility} />
 
@@ -261,6 +335,14 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         <AdminToolsSection
           toolError={toolError}
           toolSuccess={toolSuccess}
+          onOpenAddDAO={() => {
+            resetToolFeedback();
+            openModal('registerDAO');
+          }}
+          onOpenRemoveDAO={() => {
+            resetToolFeedback();
+            openModal('removeDAO');
+          }}
           onOpenRegister={() => {
             resetToolFeedback();
             openModal('registerRelayer');
@@ -302,13 +384,6 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         />
       </div>
 
-      <div ref={bannedRef} className="scroll-mt-4">
-        <BannedGatewaysSection
-          bannedGateways={bannedGateways}
-          onSelect={(g) => openEntity('gateway', g)}
-        />
-      </div>
-
       <div ref={relayersRef} className="scroll-mt-4">
         <RelayersGrid
           relayers={relayers}
@@ -316,7 +391,8 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         />
       </div>
 
-      {/* Entity modal */}
+      {/* ── Modals ── */}
+
       {selected && (
         <EntityModal
           facilityAddress={facilityAddress}
@@ -328,7 +404,36 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         />
       )}
 
-      {/* Tool modals (rendered by the hook) */}
+      <DAOMembersModal
+        open={daoModalOpen}
+        members={daoMembers}
+        onClose={() => setDaoModalOpen(false)}
+      />
+
+      {signModalCid && (
+        <SignContractModal
+          cid={signModalCid}
+          facilityAddress={facilityAddress}
+          signer={signer}
+          personalSign={personalSign}
+          onClose={() => setSignModalCid(null)}
+          onSubmit={async (v, r, s) => {
+            if (!signer) return;
+            await FactoryWriteContract.signTangibleContract(
+              signer,
+              signModalCid,
+              facilityAddress,
+              v,
+              r,
+              s
+            );
+            const fresh = await getFacilitySignedContracts(facilityAddress);
+            setSignedContracts(fresh);
+            setSignModalCid(null);
+          }}
+        />
+      )}
+
       {modals}
 
       {hasURI && showURIPreview && (

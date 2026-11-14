@@ -28,4 +28,6 @@ export const factoryAbi = new Interface([
   "function rank_candidates(address[] preferences)",
   "function become_candidate(string[] attached_documents)",
   "function quit_candidateship()",
+  "function set_committee_member(address new_member, address facility_contract)",
+  "function remove_committee_member(address member, address facility_contract)"
 ]);

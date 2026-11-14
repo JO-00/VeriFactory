@@ -2,9 +2,10 @@
 import { EventReader } from "../HashGraphUtils/Events";
 import { FacilityContractRead } from "../HashGraphUtils/Contracts/Facility/FacilityRead";
 import { FacilityContractWrite } from "../HashGraphUtils/Contracts/Facility/FacilityWrite";
-import type { Measurement , CadencePolicy, FacilityAddedEvent } from "../types";
+import type { Measurement , CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember} from "../types";
 import { Signer } from "@hiero-ledger/sdk";
-
+import { FactoryContractRead } from "../HashGraphUtils/Contracts/Factory/FactoryRead";
+import { FactoryWriteContract } from "../HashGraphUtils/Contracts/Factory/FactoryWrite";
 
 // ============================================================
 // Types
@@ -24,13 +25,7 @@ export interface GatewayReassignedEvent {
   newRelayer: string;
 }
 
-export interface KeyRotatedEvent {
-  gatewayId: string;
-  oldKey: string;
-  newKey: string;
-  isAnomalous: boolean;
-  timestamp: BigNumberType;
-}
+
 
 
 
@@ -152,26 +147,8 @@ const GATEWAY_REASSIGNED_EVENTS: GatewayReassignedEvent[] = [
   { gatewayId: GATEWAYS[1], oldRelayer: RELAYERS[0], newRelayer: RELAYERS[1] },
 ];
 
-const KEY_ROTATED_EVENTS: KeyRotatedEvent[] = [
-  {
-    gatewayId: GATEWAYS[0],
-    oldKey: RELAYERS[0],
-    newKey: RELAYERS[1],
-    isAnomalous: false,
-    timestamp: Date.UTC(2026, 5, 1) / 1000,
-  },
-  {
-    gatewayId: GATEWAYS[2],
-    oldKey: RELAYERS[1],
-    newKey: RELAYERS[2],
-    isAnomalous: true,
-    timestamp: Date.UTC(2026, 8, 12) / 1000,
-  },
-];
 
 
-
-const EMERGENCY_MODE = false;
 
 // ============================================================
 // Mock getters
@@ -180,34 +157,33 @@ const EMERGENCY_MODE = false;
 
 
 // ── Events ──
-export const getGatewayAssignedEvents = (gateway: string, facilityAddress :string): GatewayAssignedEvent[] =>
+export const getGatewayAssignedEvents = async (facilityAddress: string, gateway :string): Promise<GatewayAssignedEvent[]> =>
   gateway
     ? GATEWAY_ASSIGNED_EVENTS.filter((e) => e.gatewayId === gateway)
     : [...GATEWAY_ASSIGNED_EVENTS];
 
-export const getGatewayReassignedEvents = (
+export const getGatewayReassignedEvents = async (
   gateway: string,
   facilityAddress : string
-): GatewayReassignedEvent[] =>
+): Promise<GatewayReassignedEvent[]> =>
   gateway
     ? GATEWAY_REASSIGNED_EVENTS.filter((e) => e.gatewayId === gateway)
     : [...GATEWAY_REASSIGNED_EVENTS];
 
-export const getKeyRotatedEvents = (gateway: string, facilityAddress : string): KeyRotatedEvent[] =>
-  gateway
-    ? KEY_ROTATED_EVENTS.filter((e) => e.gatewayId === gateway)
-    : [...KEY_ROTATED_EVENTS];
+export const getKeyRotatedEvents = async (facilityAddress: string, gatewayId : string): Promise<KeyRotatedEvent[]> =>
+  await EventReader.getKeyRotatedEventsByGateway({facilityAddress, gatewayId})
 
 
 // ============================================================
 // Formatting helpers
 // ============================================================
 
-export const shortAddr = (addr: string, head = 6, tail = 4): string =>
-  addr.length <= head + tail + 2
+export const shortAddr = (addr: string | undefined | null, head = 6, tail = 4): string => {
+  if (!addr || typeof addr !== 'string') return '—';
+  return addr.length <= head + tail + 2
     ? addr
     : `${addr.slice(0, head)}…${addr.slice(-tail)}`;
-
+};
 export const formatCadence = (seconds: number): string => {
   const s = Number(seconds);
   if (s < 60) return `${s}s`;
@@ -241,16 +217,16 @@ export const getAllRelayers = async (facility_address: string): Promise<string[]
   return Array.from(res);
 };
 
-export const getGatewaysForRelayer = async (relayer: string, facility_address: string): Promise<string[]> => {
+export const getGatewaysForRelayer = async (facility_address: string, relayer: string): Promise<string[]> => {
   const res = await FacilityContractRead.getRelayerGateways(facility_address, relayer);
   return Array.from(res);
 };
-export const getGatewayStatus = async (gateway_id: string , facility_address : string): Promise<CadencePolicy> =>
+export const getGatewayStatus = async (facility_address: string , gateway_id : string): Promise<CadencePolicy> =>
   await FacilityContractRead.getGatewayPolicy(facility_address , gateway_id);
-export const getAllMeasurements = async (gateway: string, facilityAddress : string): Promise<Measurement[]> =>
-  MEASUREMENTS_PER_GATEWAY[gateway] ?? [];
-export const getRelayerRegisteredAt = async (facility_address : string , relayer: string): Promise<number | null> =>
-  RELAYER_REGISTERED_AT[relayer] ?? null;
+export const getAllMeasurements = async (facilityAddress: string, gatewayId : string): Promise<Measurement[]> =>
+  MEASUREMENTS_PER_GATEWAY[gatewayId] ?? [];
+export const getRelayerRegisteredAt = async (facilityAddress : string , relayerAddress: string): Promise<RelayerRegisteredEvent | null> =>
+  await EventReader.getRelayerRegistrationEvent({facilityAddress , relayerAddress});
 export const getFacilityAddedEvent = async (facility_address : string): Promise<FacilityAddedEvent|undefined> => {
   for (const event of await EventReader.getFacilityAddedEvents()){
     if (event.facilityAddress == facility_address) return event;
@@ -270,14 +246,23 @@ export async function handleUpdatePublicURI(facility_address : string,  new_uri:
 
 
 
-export const getAllBannedGateways = async (
+
+
+
+
+
+export async function getFacilityDaoMembers(facilityAddress : string) : Promise<StakedMember[]>{
+  return await FactoryContractRead.viewStakedMembers(facilityAddress);
+}
+
+
+export async function removeDaoMember(signer : Signer, facilityAddress : string,  Member : string){
+  await FactoryWriteContract.removeCommitteeMember(signer , facilityAddress , Member);
+}
+
+// ── Which contracts this facility has already signed ──
+export const getFacilitySignedContracts = async (
   facilityAddress: string
-): Promise<string[]> => [...BANNED_GATEWAYS];
-
-
-export const getRelayersForGateway = async (
-  gateway_id : string,
-  facility_address : string
-): Promise <string[] > => [...BANNED_GATEWAYS];
-
-
+): Promise<string[]> => {
+  return (await FactoryContractRead.getFacilitySignedContracts(facilityAddress)).map(d =>d.cid);
+};

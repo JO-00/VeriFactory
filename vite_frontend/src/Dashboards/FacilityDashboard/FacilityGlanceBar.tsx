@@ -12,7 +12,6 @@ interface GlanceProps {
   facility: FacilityAddedEvent;
   gatewayCount: number;
   relayerCount: number;
-  bannedCount: number;
   onSelectGateways?: () => void;
   onSelectRelayers?: () => void;
   onSelectBanned?: () => void;

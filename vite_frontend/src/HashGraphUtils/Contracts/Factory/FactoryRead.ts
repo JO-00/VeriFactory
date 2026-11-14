@@ -306,21 +306,25 @@ export class FactoryContractRead {
   }
 
   static async viewStakedMembers(
-    facilityAddress: string
-  ): Promise<StakedMember[]> {
-    const raw = await callMirrorNode(
-      this.getContractId(),
-      "view_staked_members",
-      ["address"],
-      [facilityAddress]
-    );
-    const coder = AbiCoder.defaultAbiCoder();
-    const [stakedMembers] = coder.decode(
-      ["tuple(address wallet, uint256 amount)[]"],
-      raw
-    );
-    return stakedMembers;
-  }
+      facilityAddress: string
+    ): Promise<StakedMember[]> {
+      const raw = await callMirrorNode(
+        this.getContractId(),
+        "view_staked_members",
+        ["address"],
+        [facilityAddress]
+      );
+      const coder = AbiCoder.defaultAbiCoder();
+      const [stakedMembers] = coder.decode(
+        ["tuple(address wallet, uint256 amount)[]"],
+        raw
+      );
+
+      return stakedMembers.toArray().map((m: { wallet: string; amount: bigint }) => ({
+        wallet: m.wallet,
+        amount: m.amount,
+      }));
+    }
 
   static async memberStake(who: string): Promise<InstanceType<typeof BigNumber>> {
     const raw = await callMirrorNode(

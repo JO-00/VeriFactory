@@ -3,6 +3,7 @@
 
 import { FACILITY_DAO_MEMBERS } from './../Dashboards/dashboard_constants';
 import type { StakedMember } from '../types';
+import {FactoryContractRead} from "./../HashGraphUtils/Contracts/Factory/FactoryRead"
 
 export interface FacilityDAOStats {
   address: string;
@@ -42,11 +43,11 @@ export function getFacilityStakes(facilityAddress: string): StakedMember[] {
   return FACILITY_DAO_MEMBERS[facilityAddress] ?? [];
 }
 
-export function computeFacilityDAOStats(
+export async function computeFacilityDAOStats(
   facilityAddress: string,
   name?: string
-): FacilityDAOStats {
-  const members = getFacilityStakes(facilityAddress);
+): Promise<FacilityDAOStats> {
+  const members = await FactoryContractRead.viewStakedMembers(facilityAddress)
   const stakes = members.map((m) => Number(m.amount));
   const totalStaked = stakes.reduce((a, b) => a + b, 0);
   return {

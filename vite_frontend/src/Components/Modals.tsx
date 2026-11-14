@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { shortAddr } from "../Dashboards/facillity_dashboard_mocks";
 
 export const ModalShell: React.FC<{
   title: string;

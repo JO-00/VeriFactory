@@ -1,9 +1,10 @@
 // ============== mirrorNodeEvents.ts ==============
 
-import { Interface, id, getAddress } from 'ethers';
+import { Interface, id, getAddress, zeroPadValue } from 'ethers';
 import { ContractId } from '@hiero-ledger/sdk';
 import { FACTORY_CONTRACT_ADDRESS } from './configs';
-import { type FacilityAddedEvent } from '../types';
+import type { FacilityAddedEvent , RelayerRegisteredEvent  , KeyRotatedEvent} from '../types';
+import {getCallerName} from "./debug"
 
 const MIRROR_NODE_URL = 'https://testnet.mirrornode.hedera.com'; // adjust for your network
 const MAX_WINDOW_MS = 7 * 86_400_000 - 60_000; // 6d 23h 59m (safely under Hedera's strict 7d cap)
@@ -27,6 +28,19 @@ function toHederaTimestamp(ms: number): string {
   return `${seconds}.${String(nanos).padStart(9, '0')}`;
 }
 
+const RELAYER_REGISTERED_ABI = [
+  'event RelayerRegistered(address indexed relayerAddress, string name)',
+];
+const relayerRegisteredIface = new Interface(RELAYER_REGISTERED_ABI);
+const RELAYER_REGISTERED_TOPIC0 = id('RelayerRegistered(address,string)');
+
+/** Parse Hedera "seconds.nanoseconds" string into Unix ms. */
+function parseHederaTimestampMs(hederaTimestamp: string): number {
+  const [secStr, nanoStr = '0'] = hederaTimestamp.split('.');
+  const seconds = Number(secStr);
+  const millis = Math.floor(Number(nanoStr.padEnd(9, '0')) / 1_000_000);
+  return seconds * 1000 + millis;
+}
 // ───────────────────────────────────────────────────────────
 // 1) Generic: fetch raw logs for any event
 // ───────────────────────────────────────────────────────────
@@ -49,8 +63,15 @@ export interface CallMirrorNodeEventsOptions {
   fromMs?: number;
   /** Max logs per page (Hedera caps at 100). */
   pageSize?: number;
+  /** Optional 32-byte hex topic1 filter for indexed first parameters. */
+  topic1?: string;
 }
 
+const KEY_ROTATED_ABI = [
+  'event KeyRotated(string indexed gatewayId, address oldKey, address newKey, bool indexed isAnomalous, uint256 timestamp)',
+];
+const keyRotatedIface = new Interface(KEY_ROTATED_ABI);
+const KEY_ROTATED_TOPIC0 = id('KeyRotated(string,address,address,bool,uint256)');
 /**
  * Fetch raw event logs for `eventName(types...)` emitted by `targetAddress`.
  * - Accepts "0.0.x" or "0x..." addresses
@@ -63,6 +84,7 @@ export async function callMirrorNodeEvents(
   inputTypes: string[],
   options: CallMirrorNodeEventsOptions = {}
 ): Promise<RawLog[]> {
+  console.log(getCallerName());
   const isEvmInput = targetAddress.startsWith('0x');
   const evmAddress = toEvmAddress(targetAddress).toLowerCase();
 
@@ -92,6 +114,9 @@ export async function callMirrorNodeEvents(
         order: 'asc',
         limit: String(pageSize),
       });
+      if (options.topic1) {
+        params.set('topic1', options.topic1);
+      }
       params.append('timestamp', `gte:${toHederaTimestamp(fromMs)}`);
       params.append('timestamp', `lte:${toHederaTimestamp(toMs)}`);
 
@@ -177,6 +202,169 @@ export class EventReader {
         });
       } catch (err) {
         console.warn('[getFacilityAddedEvents] failed to decode log', log, err);
+      }
+    }
+
+    return out;
+  }
+
+  static async getAllRelayerRegistrationEvents(
+    facilityAddress: string,
+    options: CallMirrorNodeEventsOptions = {}
+  ): Promise<RelayerRegisteredEvent[]> {
+    const rawLogs = await callMirrorNodeEvents(
+      facilityAddress,
+      'RelayerRegistered',
+      ['address', 'string'],
+      options
+    );
+
+    const out: RelayerRegisteredEvent[] = [];
+
+    for (const log of rawLogs) {
+      if (log.topics[0]?.toLowerCase() !== RELAYER_REGISTERED_TOPIC0.toLowerCase()) continue;
+
+      try {
+        const parsed = relayerRegisteredIface.parseLog({
+          topics: log.topics,
+          data: log.data,
+        });
+        if (!parsed || parsed.name !== 'RelayerRegistered') continue;
+
+        const timestampMs = parseHederaTimestampMs(log.timestamp);
+
+        out.push({
+          facilityAddress,
+          relayerAddress: parsed.args.relayerAddress as string,
+          name: parsed.args.name as string,
+          transactionHash: log.transaction_hash,
+          blockNumber: log.block_number,
+          transactionIndex: log.transaction_index,
+          logIndex: log.log_index,
+          timestamp: log.timestamp,
+          timestampMs,
+          timestampDate: new Date(timestampMs),
+        });
+      } catch (err) {
+        console.warn('[getAllRelayerRegistrationEvents] failed to decode log', log, err);
+      }
+    }
+
+    return out;
+  }
+  static async getRelayerRegistrationEvent(
+    {
+      facilityAddress,
+      relayerAddress,
+    }: {
+      facilityAddress: string;
+      relayerAddress: string;
+    },
+    options: Omit<CallMirrorNodeEventsOptions, 'topic1'> = {}
+  ): Promise<RelayerRegisteredEvent | null> {
+    const normalizedRelayerEvm = toEvmAddress(relayerAddress);
+    const topic1 = zeroPadValue(normalizedRelayerEvm, 32).toLowerCase();
+
+    const rawLogs = await callMirrorNodeEvents(
+      facilityAddress,
+      'RelayerRegistered',
+      ['address', 'string'],
+      { ...options, topic1 }
+    );
+
+    for (const log of rawLogs) {
+      if (log.topics[0]?.toLowerCase() !== RELAYER_REGISTERED_TOPIC0.toLowerCase()) continue;
+
+      try {
+        const parsed = relayerRegisteredIface.parseLog({
+          topics: log.topics,
+          data: log.data,
+        });
+        if (!parsed || parsed.name !== 'RelayerRegistered') continue;
+
+        const eventRelayer = parsed.args.relayerAddress as string;
+        if (eventRelayer.toLowerCase() !== normalizedRelayerEvm.toLowerCase()) continue;
+
+        const timestampMs = parseHederaTimestampMs(log.timestamp);
+
+        return {
+          facilityAddress,
+          relayerAddress: eventRelayer,
+          name: parsed.args.name as string,
+          transactionHash: log.transaction_hash,
+          blockNumber: log.block_number,
+          transactionIndex: log.transaction_index,
+          logIndex: log.log_index,
+          timestamp: log.timestamp,
+          timestampMs,
+          timestampDate: new Date(timestampMs),
+        };
+      } catch (err) {
+        console.warn('[getRelayerRegistrationEvent] failed to decode log', log, err);
+      }
+    }
+
+    return null;
+  }
+  static async getKeyRotatedEventsByGateway(
+    {
+      facilityAddress,
+      gatewayId,
+    }: {
+      facilityAddress: string;
+      gatewayId: string;
+    },
+    options: Omit<CallMirrorNodeEventsOptions, 'topic1'> = {}
+  ): Promise<KeyRotatedEvent[]> {
+    // Indexed strings in Solidity are hashed with keccak256 in topic1
+    const topic1 = id(gatewayId).toLowerCase();
+
+    const rawLogs = await callMirrorNodeEvents(
+      facilityAddress,
+      'KeyRotated',
+      ['string', 'address', 'address', 'bool', 'uint256'],
+      { ...options, topic1 }
+    );
+
+    const out: KeyRotatedEvent[] = [];
+
+    for (const log of rawLogs) {
+      if (log.topics[0]?.toLowerCase() !== KEY_ROTATED_TOPIC0.toLowerCase()) continue;
+
+      try {
+        const parsed = keyRotatedIface.parseLog({
+          topics: log.topics,
+          data: log.data,
+        });
+        if (!parsed || parsed.name !== 'KeyRotated') continue;
+
+        const gatewayIdHash = parsed.args.gatewayId.hash as string;
+        if (gatewayIdHash.toLowerCase() !== topic1) continue;
+
+        const contractTimestamp = parsed.args.timestamp as bigint;
+        const contractTimestampMs = Number(contractTimestamp) * 1000;
+        const timestampMs = parseHederaTimestampMs(log.timestamp);
+
+        out.push({
+          facilityAddress,
+          gatewayId,
+          gatewayIdHash,
+          oldKey: parsed.args.oldKey as string,
+          newKey: parsed.args.newKey as string,
+          isAnomalous: parsed.args.isAnomalous as boolean,
+          contractTimestamp,
+          contractTimestampMs,
+          contractTimestampDate: new Date(contractTimestampMs),
+          transactionHash: log.transaction_hash,
+          blockNumber: log.block_number,
+          transactionIndex: log.transaction_index,
+          logIndex: log.log_index,
+          timestamp: log.timestamp,
+          timestampMs,
+          timestampDate: new Date(timestampMs),
+        });
+      } catch (err) {
+        console.warn('[getKeyRotatedEventsByGateway] failed to decode log', log, err);
       }
     }
 

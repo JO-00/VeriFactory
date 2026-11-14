@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ModalShell, Field, ModalFooter, inputCls } from '../../Components/Modals';
 import { shortAddr } from '../facillity_dashboard_mocks';
+import type { StakedMember } from '../../types';
 
 // ============================================================
 // Reassign gateway
@@ -378,6 +379,199 @@ export const RemoveRelayerModal: React.FC<{
           }
         }}
         submitLabel="Remove"
+        loading={loading}
+        disabled={!addr}
+        destructive
+      />
+    </ModalShell>
+  );
+};
+
+// Add DAO member — takes a member address
+// ============== AddDAOMemberModal ==============
+
+export const AddDAOMemberModal: React.FC<{
+  currentDAOMembers?: StakedMember[];
+  onClose: () => void;
+  onSubmit: (memberAddress: string, fee: string) => Promise<void>;
+}> = ({ currentDAOMembers = [], onClose, onSubmit }) => {
+  const [addr, setAddr] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const seatCount = currentDAOMembers.length;
+  const isFirstSeat = seatCount === 0;
+  const atCap = seatCount >= 3;
+
+  // tinybar string the write contract will attach as msg.value
+  const feeString = isFirstSeat ? '25000000' : '100000000';
+  const feeHbar = isFirstSeat ? 0.25 : 1;
+
+  // Detect duplicates (case-insensitive, address strings)
+  const trimmed = addr.trim();
+  const alreadyMember =
+    trimmed.length > 0 &&
+    currentDAOMembers.some(
+      (m) => m.wallet.toLowerCase() === trimmed.toLowerCase()
+    );
+
+  const canSubmit = !atCap && trimmed.length > 0 && !alreadyMember;
+
+  return (
+    <ModalShell title="Stake a DAO member" onClose={onClose}>
+      {/* Explainer */}
+      <div className="text-[0.72rem] text-ink-muted bg-surface-muted border border-border rounded-[5px] px-3 py-2 mb-3 leading-relaxed">
+        Staking a DAO member adds a wallet to the <strong>global DAO</strong>. DAO
+        members vote on inspectors every 4 weeks. Once staked, the wallet is
+        committed to this facility until you remove it.
+      </div>
+
+      {/* Cap / fee summary */}
+      {atCap ? (
+        <div className="text-[0.72rem] text-ink-muted bg-[#fff8e6] border border-[#f0d58a] rounded-[5px] px-3 py-2 mb-3">
+          You already have <strong>3/3 DAO seats</strong>. You must remove a member
+          before you can stake a new one — each facility can have at most 3.
+        </div>
+      ) : (
+        <div className="text-[0.72rem] text-ink-muted bg-surface-muted border border-border rounded-[5px] px-3 py-2 mb-3">
+          <div className="flex justify-between">
+            <span>Current seats</span>
+            <span className="font-medium text-ink">{seatCount}/3</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span>
+              Required fee{' '}
+              <span className="italic">
+                ({isFirstSeat ? 'first seat' : 'additional seat'})
+              </span>
+            </span>
+            <span className="font-medium text-ink">{feeHbar} HBAR</span>
+          </div>
+        </div>
+      )}
+
+      {/* Address input */}
+      <Field label="Member wallet address">
+        <input
+          value={addr}
+          onChange={(e) => setAddr(e.target.value)}
+          placeholder="0x…"
+          disabled={atCap}
+          className={
+            inputCls +
+            ' font-mono disabled:cursor-not-allowed disabled:opacity-60'
+          }
+        />
+      </Field>
+
+      {/* Already-member warning */}
+      {alreadyMember && (
+        <div className="text-[0.72rem] text-[#a12626] bg-[#fdecec] border border-[#f2a3a3] rounded-[5px] px-3 py-2 mb-3">
+          <strong>Can't add this member.</strong>{' '}
+          <span className="font-mono">{shortAddr(trimmed)}</span> is already a
+          staked DAO member of this facility.
+        </div>
+      )}
+
+      {/* Payment confirmation (only when valid) */}
+      {!atCap && trimmed && !alreadyMember && (
+        <div className="text-[0.72rem] text-[#7a5b00] bg-[#fff8e6] border border-[#f0d58a] rounded-[5px] px-3 py-2 mb-3">
+          You will be charged <strong>{feeHbar} HBAR</strong> to stake{' '}
+          <span className="font-mono">{shortAddr(trimmed)}</span>. Excess
+          payment is refunded automatically by the contract.
+        </div>
+      )}
+
+      <ModalFooter
+        onClose={onClose}
+        onSubmit={async () => {
+          setLoading(true);
+          try {
+            await onSubmit(trimmed, feeString);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        submitLabel={
+          atCap
+            ? 'Seat cap reached'
+            : alreadyMember
+            ? 'Already a member'
+            : `Stake for ${feeHbar} HBAR`
+        }
+        loading={loading}
+        disabled={!canSubmit}
+      />
+    </ModalShell>
+  );
+};
+
+// ============== RemoveDAOMemberModal ==============
+
+export const RemoveDAOMemberModal: React.FC<{
+  members: StakedMember[];
+  onClose: () => void;
+  onSubmit: (memberAddress: string) => Promise<void>;
+}> = ({ members, onClose, onSubmit }) => {
+  const [addr, setAddr] = useState(members[0]?.wallet ?? '');
+  const [loading, setLoading] = useState(false);
+
+  const selected = members.find((m) => m.wallet === addr);
+
+  return (
+    <ModalShell title="Remove DAO member" onClose={onClose}>
+      {/* What this action does */}
+      <div className="text-[0.72rem] text-ink-muted bg-surface-muted border border-border rounded-[5px] px-3 py-2 mb-3 leading-relaxed">
+        Removing a DAO member <strong>frees one facility seat</strong> and removes
+        the wallet from the global DAO. The stake you originally paid is{' '}
+        <strong>refunded in full</strong> to you (the facility admin) — not to the
+        member wallet.
+      </div>
+
+      <Field label="Member to remove">
+        <select
+          value={addr}
+          onChange={(e) => setAddr(e.target.value)}
+          className={inputCls}
+        >
+          {members.length === 0 && <option value="">No DAO members</option>}
+          {members.map((m) => (
+            <option key={m.wallet} value={m.wallet}>
+              {shortAddr(m.wallet)}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {/* Live refund preview — shows as soon as a member is selected */}
+      {selected && (
+        <div className="text-[0.72rem] text-success bg-[#e8f7ee] border border-[#b4e5c7] rounded-[5px] px-3 py-2 mb-3">
+          <div className="flex justify-between">
+            <span>Refund on removal</span>
+            <span className="font-semibold">
+              {formatStake(Number(selected.amount))}
+            </span>
+          </div>
+          <div className="text-[0.68rem] text-ink-muted mt-1 italic">
+            Paid to you when the transaction succeeds.
+          </div>
+        </div>
+      )}
+
+      <ModalFooter
+        onClose={onClose}
+        onSubmit={async () => {
+          setLoading(true);
+          try {
+            await onSubmit(addr);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        submitLabel={
+          selected
+            ? `Remove & refund ${formatStake(Number(selected.amount))}`
+            : 'Remove'
+        }
         loading={loading}
         disabled={!addr}
         destructive

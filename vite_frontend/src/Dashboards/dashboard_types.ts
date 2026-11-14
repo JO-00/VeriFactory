@@ -74,7 +74,7 @@ export interface RelayerGatewayConfig {
 
 export interface EntityModalProps {
   facilityAddress : string,
-  selected: { kind: 'gateway' | 'relayer'; address: string };
+  selected: { kind: 'gateway' | 'relayer'; address: string ; id ? : string };
   page: ModalPage;
   setPage: (p: ModalPage) => void;
   onClose: () => void;

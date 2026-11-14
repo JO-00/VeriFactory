@@ -2,6 +2,7 @@ import { BigNumber } from "bignumber.js";
 import { AbiCoder, JsonRpcProvider, Interface, keccak256, toUtf8Bytes } from "ethers";
 import { ContractId } from "@hiero-ledger/sdk";
 import  {type CadencePolicy ,type Gateway, UserFacilityRole} from "./../../../types"
+import {getCallerName} from "./../../debug"
 
 
 const ROLE_HASH: Record<UserFacilityRole, string> = {
@@ -34,7 +35,7 @@ async function callMirrorNode(
   args: unknown[]
 ): Promise<string> {
   let evmAddress: string;
-
+  console.log(args)
   if (targetAddress.startsWith("0x")) {
     evmAddress = targetAddress;
   } else {
@@ -43,6 +44,7 @@ async function callMirrorNode(
     evmAddress = rawAddress.startsWith("0x") ? rawAddress : `0x${rawAddress}`;
   }
 
+  console.log(getCallerName());
   const signature = "function " + functionName + "(" + inputTypes.join(",") + ")";
   const iface = new Interface([signature]);
   const data = iface.encodeFunctionData(functionName, args);
@@ -83,7 +85,6 @@ export class FacilityContractRead  {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [gateways] = coder.decode(["string[]"], raw);
-    console.log(`facility address = ${facilityAddress}\nrelayer = ${relayer}`)
     return gateways;
   }
 
@@ -111,7 +112,7 @@ export class FacilityContractRead  {
       []
     );
     const coder = AbiCoder.defaultAbiCoder();
-    const [emergency_status] = coder.decode(["string"], raw);
+    const [emergency_status] = coder.decode(["bool"], raw);
     return emergency_status;
   }
 

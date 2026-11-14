@@ -237,6 +237,8 @@ export const RelayerToolsSection: React.FC<{
 export const AdminToolsSection: React.FC<{
   toolError: string | null;
   toolSuccess: string | null;
+  onOpenAddDAO: () => void;        
+  onOpenRemoveDAO: () => void; 
   onOpenRegister: () => void;
   onOpenRemove: () => void;
   onOpenAssign: () => void;
@@ -249,6 +251,8 @@ export const AdminToolsSection: React.FC<{
 }> = ({
   toolError,
   toolSuccess,
+  onOpenAddDAO,
+  onOpenRemoveDAO,
   onOpenRegister,
   onOpenRemove,
   onOpenAssign,
@@ -262,6 +266,22 @@ export const AdminToolsSection: React.FC<{
   <section className="mb-6">
     <SectionHeader icon="👑" title="Admin tools" />
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <ToolCard title="Register DAO Member" description="Add a new relayer to this facility.">
+        <button
+          onClick={onOpenAddDAO}
+          className="w-full rounded-[5px] border border-accent bg-accent text-white px-3 py-1.5 text-xs font-semibold hover:brightness-110 cursor-pointer"
+        >
+          Register…
+        </button>
+      </ToolCard>
+      <ToolCard title="Remove DAO Member" description="Add a new relayer to this facility.">
+        <button
+          onClick={onOpenRemoveDAO}
+          className="w-full rounded-[5px] border border-accent bg-accent text-white px-3 py-1.5 text-xs font-semibold hover:brightness-110 cursor-pointer"
+        >
+          Register…
+        </button>
+      </ToolCard>
       <ToolCard title="Register relayer" description="Add a new relayer to this facility.">
         <button
           onClick={onOpenRegister}
@@ -450,31 +470,3 @@ export const URIPreviewModal: React.FC<{
     </div>
   </div>
 );
-
-export const BannedGatewaysSection: React.FC<{
-  bannedGateways: string[];
-  onSelect: (gateway: string) => void;
-}> = ({ bannedGateways, onSelect }) => {
-  if (bannedGateways.length === 0) return null;
-
-  return (
-    <section className="mb-6">
-      <SectionHeader icon="🚫" title="Banned gateways" count={bannedGateways.length} />
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
-        {bannedGateways.map((gw) => (
-          <button
-            key={gw}
-            onClick={() => onSelect(gw)}
-            title={gw}
-            className="text-left bg-[#fdecec] border border-[#f2a3a3] rounded-md px-3 py-2.5 transition-colors cursor-pointer"
-          >
-            <div className="font-mono text-[0.75rem] text-[#a12626] break-all">
-              {shortAddr(gw)}
-            </div>
-            <div className="text-[10px] text-[#7a1a1a] mt-1">Banned</div>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-};

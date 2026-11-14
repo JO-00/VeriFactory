@@ -12,8 +12,12 @@ import {
   SetGatewayPolicyModal,
   UpdateURIModal,
   RotateKeyModal,
+  AddDAOMemberModal,
+  RemoveDAOMemberModal,
 } from './AdminModals';
+import type { StakedMember } from '../../types';
 import { FacilityContractWrite } from '../../HashGraphUtils/Contracts/Facility/FacilityWrite';
+import { FactoryWriteContract } from '../../HashGraphUtils/Contracts/Factory/FactoryWrite';
 
 interface Args {
   facilityAddress: string;
@@ -22,6 +26,7 @@ interface Args {
   myGateways: string[];
   relayers: string[];
   gateways: string[];
+  daoMembers: StakedMember[];       
   setPublicURIState: (uri: string) => void;
 }
 
@@ -35,6 +40,8 @@ type ModalKind =
   | 'adminReassign'
   | 'setPolicy'
   | 'updateURI'
+  | 'registerDAO'
+  | 'removeDAO'
   | null;
 
 /** Type-safe extraction of a message from an unknown thrown value. */
@@ -51,6 +58,7 @@ export function useFacilityToolHandlers({
   myGateways,
   relayers,
   gateways,
+  daoMembers,        // ← new
   setPublicURIState,
 }: Args) {
   const [toolError, setToolError] = useState<string | null>(null);
@@ -72,8 +80,9 @@ export function useFacilityToolHandlers({
     resetToolFeedback();
     if (emergency) return setToolError("Key rotations aren't accepted in emergencies.");
     if (!gatewayId || !newKey.trim()) return setToolError('Gateway and new key are required.');
+    if (!signer) return setToolError('Connect your wallet first');
     try {
-      // TODO: await FactoryWriteContract.rotateKey(signer, facilityAddress, gatewayId, newKey);
+      await FacilityContractWrite.rotateKey(signer, facilityAddress, gatewayId, newKey);
       console.log('[rotate_key]', { facilityAddress, gatewayId, newKey });
       setToolSuccess(`Key rotated for ${shortAddr(gatewayId)}`);
       closeModal();
@@ -108,12 +117,38 @@ export function useFacilityToolHandlers({
     }
   };
 
+  const onAddDAOMember = async (new_member: string, fee : string) => {
+    resetToolFeedback();
+    if (!new_member) return setToolError('Select a member to add');
+    if (!signer) return setToolError('Need to connect to wallet');
+    try {
+      await FactoryWriteContract.setCommitteeMember(signer , facilityAddress , new_member, fee );
+      setToolSuccess(`DAO member added : ${shortAddr(new_member)} !`);
+      closeModal();
+    } catch (err: unknown) {
+      setToolError(getErrorMessage(err, 'Ban failed.'));
+    }
+  };
+
+  const onRemoveDAO = async (new_member: string) => {
+    resetToolFeedback();
+    if (!new_member) return setToolError('Select a member to add');
+    if (!signer) return setToolError('Need to connect to wallet');
+    try {
+      await FactoryWriteContract.removeCommitteeMember(signer , facilityAddress , new_member);
+      setToolSuccess(`DAO member removed : ${shortAddr(new_member)} !`);
+      closeModal();
+    } catch (err: unknown) {
+      setToolError(getErrorMessage(err, 'Ban failed.'));
+    }
+  };
   const onBanGateway = async (gatewayId: string) => {
     resetToolFeedback();
     if (!gatewayId) return setToolError('Select a gateway to ban.');
     if (!myGateways.includes(gatewayId)) return setToolError('You can only ban your own gateways.');
+    if (!signer) return setToolError('Need to connect to wallet');
     try {
-      // TODO: await FactoryWriteContract.banGateway(signer, facilityAddress, gatewayId);
+      await FacilityContractWrite.banGateway(signer, facilityAddress, gatewayId);
       console.log('[ban_gateway]', { facilityAddress, gatewayId });
       setToolSuccess(`Gateway ${shortAddr(gatewayId)} banned.`);
       closeModal();
@@ -125,8 +160,9 @@ export function useFacilityToolHandlers({
   const onAdminBanGateway = async (gatewayId: string) => {
     resetToolFeedback();
     if (!gatewayId) return setToolError('Select a gateway to ban.');
+    if (!signer) return setToolError('Connect to wallet first');
     try {
-      // TODO: await FactoryWriteContract.banGateway(signer, facilityAddress, gatewayId);
+      await FacilityContractWrite.banGateway(signer, facilityAddress, gatewayId);
       console.log('[admin_ban_gateway]', { facilityAddress, gatewayId });
       setToolSuccess(`Gateway ${shortAddr(gatewayId)} banned.`);
       closeModal();
@@ -151,9 +187,9 @@ export function useFacilityToolHandlers({
   const onRemoveRelayer = async (relayerAddress: string,) => {
     resetToolFeedback();
     if (!relayerAddress) return setToolError('Select a relayer to remove.');
+    if (!signer) return setToolError('Connect your wallet first.');
     try {
-      // TODO: await FactoryWriteContract.removeRelayer(signer, facilityAddress, relayerAddress);
-      console.log('[remove_relayer]', { facilityAddress, relayerAddress });
+      await FacilityContractWrite.removeRelayer(signer, facilityAddress, relayerAddress);
       setToolSuccess(`Relayer ${shortAddr(relayerAddress)} removed.`);
       closeModal();
     } catch (err: unknown) {
@@ -165,10 +201,11 @@ export function useFacilityToolHandlers({
     resetToolFeedback();
     if (!gatewayId.trim() || !gatewayKey.trim() || !relayer)
       return setToolError('Gateway ID, key, and relayer are required.');
+    if (!signer) return setToolError('Connect your wallet first');
     try {
-      // TODO: await FactoryWriteContract.assignGateway(
-      //   signer, facilityAddress, { id: gatewayId, key: gatewayKey, relayer }
-      // );
+      await FacilityContractWrite.assignGatewayToRelayer(
+         signer, facilityAddress, gatewayId, gatewayKey, relayer 
+      );
       console.log('[assign_gateway]', { facilityAddress, gatewayId, gatewayKey, relayer });
       setToolSuccess(`Gateway ${gatewayId} assigned to ${shortAddr(relayer)}.`);
       closeModal();
@@ -186,16 +223,9 @@ export function useFacilityToolHandlers({
     if (!gatewayId) return setToolError('Select a gateway.');
     if (expectedInterval <= 0 || gracePeriod < 0)
       return setToolError('Interval must be > 0 and grace period ≥ 0.');
+    if (!signer) return setToolError('Connect your wallet first');
     try {
-      // TODO: await FactoryWriteContract.setGatewayPolicy(
-      //   signer, facilityAddress, gatewayId, expectedInterval, gracePeriod
-      // );
-      console.log('[set_gateway_policy]', {
-        facilityAddress,
-        gatewayId,
-        expectedInterval,
-        gracePeriod,
-      });
+      await FacilityContractWrite.setGatewayPolicy(signer , facilityAddress , gatewayId , expectedInterval , gracePeriod)
       setToolSuccess(`Policy updated for ${shortAddr(gatewayId)}.`);
       closeModal();
     } catch (err: unknown) {
@@ -206,9 +236,9 @@ export function useFacilityToolHandlers({
   const onAdminReassign = async (gatewayId: string, newRelayer: string) => {
     resetToolFeedback();
     if (!gatewayId || !newRelayer) return setToolError('Gateway and target relayer are required.');
+    if (!signer) return setToolError('Connect your wallet first');
     try {
-      // TODO: await FactoryWriteContract.reassignGateway(signer, facilityAddress, gatewayId, newRelayer);
-      console.log('[admin_reassign_gateway]', { facilityAddress, gatewayId, newRelayer });
+      await FacilityContractWrite.reassignGatewayRelayer(signer, facilityAddress, gatewayId, newRelayer);
       setToolSuccess(`Gateway ${shortAddr(gatewayId)} reassigned.`);
       closeModal();
     } catch (err: unknown) {
@@ -218,8 +248,10 @@ export function useFacilityToolHandlers({
 
   const onToggleEmergency = async () => {
     resetToolFeedback();
+    if (!signer)return setToolError('Connect your wallet first.');
     try {
-      // TODO: await FactoryWriteContract.toggleEmergency(signer, facilityAddress);
+      if (!emergency) await FacilityContractWrite.enableEmergencyOverride(signer, facilityAddress);
+      else return setToolError('Emergency already Activated');
       console.log('[toggle_emergency]', { facilityAddress });
       setToolSuccess('Emergency toggled.');
     } catch (err: unknown) {
@@ -229,9 +261,10 @@ export function useFacilityToolHandlers({
 
   const onDeactivate = async () => {
     resetToolFeedback();
+    if (!signer)return setToolError('Connect your wallet first.');
     try {
-      // TODO: await FactoryWriteContract.deactivateFacility(signer, facilityAddress);
-      console.log('[deactivate_facility]', { facilityAddress });
+      if (emergency) await FacilityContractWrite.disableEmergencyOverride(signer, facilityAddress);
+      else return setToolError('Emergency is not even Active');
       setToolSuccess('Facility deactivated.');
     } catch (err: unknown) {
       setToolError(getErrorMessage(err, 'Deactivation failed.'));
@@ -252,6 +285,12 @@ export function useFacilityToolHandlers({
       )}
       {open === 'registerRelayer' && (
         <RegisterRelayerModal onClose={closeModal} onSubmit={onRegisterRelayer} />
+      )}
+      {open === 'registerDAO' && (
+        <AddDAOMemberModal onClose={closeModal} currentDAOMembers={daoMembers} onSubmit={onAddDAOMember} />
+      )}
+      {open === 'removeDAO' && (
+        <RemoveDAOMemberModal onClose={closeModal} members={daoMembers} onSubmit={onRemoveDAO} />
       )}
       {open === 'removeRelayer' && (
         <RemoveRelayerModal
