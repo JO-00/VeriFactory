@@ -21,8 +21,8 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({ cid, onClose }) => {
         if (revoked) { URL.revokeObjectURL(url); return; }
         createdUrl = url;
         setBlobUrl(url);
-      } catch (err: any) {
-        if (!revoked) setError(err?.message ?? 'Failed to load IPFS content');
+      } catch (err: unknown) {
+        if (!revoked) setError(err instanceof Error ? err.message : 'Failed to load IPFS content');
       } finally {
         if (!revoked) setLoading(false);
       }

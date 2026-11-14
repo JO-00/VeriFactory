@@ -41,6 +41,9 @@ def generate_report():
         print(f"number of relayers = {len(relayers)}")
         print(f"number of gateways = {len(gateways)}")
 
+        for k, relayer_gateways in enumerate(facility["actors"]["RelayersGatewaysBinaryMatrix"]):
+            print(f"""relayer {k} is managing gateways {[i+1 for i, g in enumerate(relayer_gateways) if g]}""")
+
         if list(facility["actors"]["GatewayPolicies"].keys()):
             random_gateway = random.choice(list(facility["actors"]["GatewayPolicies"].keys()))
             print(f"expected interval for all gateways = {facility["actors"]["GatewayPolicies"][random_gateway]["ExpectedInterval"]}s")

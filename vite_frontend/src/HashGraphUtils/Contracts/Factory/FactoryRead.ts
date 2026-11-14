@@ -94,7 +94,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [contracts] = coder.decode(
-      ["tuple(string title, string doc_cid)[]"],
+      ["tuple(string cid, string docType, string title, uint256 uploadedAt)[]"],
       raw
     );
     return contracts;
@@ -158,7 +158,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [contracts] = coder.decode(
-      ["tuple(string doc_cid, address signer, uint256 timestamp)[]"],
+      ["tuple(string cid, string docType, string title, uint256 uploadedAt)[]"],
       raw
     );
     return contracts;

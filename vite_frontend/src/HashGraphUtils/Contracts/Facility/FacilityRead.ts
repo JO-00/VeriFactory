@@ -1,15 +1,14 @@
 import { BigNumber } from "bignumber.js";
-import { AbiCoder, JsonRpcProvider, Interface } from "ethers";
+import { AbiCoder, JsonRpcProvider, Interface, keccak256, toUtf8Bytes } from "ethers";
 import { ContractId } from "@hiero-ledger/sdk";
-import type {CadencePolicy , Gateway} from "./../../../types"
-
-// ==========================================
-// Data Structures
-// ==========================================
+import  {type CadencePolicy ,type Gateway, UserFacilityRole} from "./../../../types"
 
 
-
-
+const ROLE_HASH: Record<UserFacilityRole, string> = {
+  [UserFacilityRole.Admin]:    keccak256(toUtf8Bytes("ADMIN")),
+  [UserFacilityRole.Relayer]:  keccak256(toUtf8Bytes("RELAYER")),
+  [UserFacilityRole.Observer]: keccak256(toUtf8Bytes("OBSERVER")),
+};
 
 
 // ==========================================
@@ -34,10 +33,15 @@ async function callMirrorNode(
   inputTypes: string[],
   args: unknown[]
 ): Promise<string> {
-  // Parses 0.0.X or 0x... and converts to the correct EVM address
-  const contractId = ContractId.fromString(targetAddress);
-  const rawAddress = contractId.toEvmAddress();
-  const evmAddress = rawAddress.startsWith("0x") ? rawAddress : `0x${rawAddress}`;
+  let evmAddress: string;
+
+  if (targetAddress.startsWith("0x")) {
+    evmAddress = targetAddress;
+  } else {
+    const contractId = ContractId.fromString(targetAddress);
+    const rawAddress = contractId.toEvmAddress();
+    evmAddress = rawAddress.startsWith("0x") ? rawAddress : `0x${rawAddress}`;
+  }
 
   const signature = "function " + functionName + "(" + inputTypes.join(",") + ")";
   const iface = new Interface([signature]);
@@ -79,7 +83,36 @@ export class FacilityContractRead  {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [gateways] = coder.decode(["string[]"], raw);
+    console.log(`facility address = ${facilityAddress}\nrelayer = ${relayer}`)
     return gateways;
+  }
+
+  static async getLandingPageURI(
+    facilityAddress: string
+  ): Promise<string> {
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "LandingPageURI",
+      [],
+      []
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [uri] = coder.decode(["string"], raw);
+    return uri;
+  }
+
+  static async getEmergencyStatus(
+    facilityAddress: string
+  ): Promise<boolean> {
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "emergencyOverride",
+      [],
+      []
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [emergency_status] = coder.decode(["string"], raw);
+    return emergency_status;
   }
 
   static async getGatewayInfo(
@@ -146,21 +179,50 @@ export class FacilityContractRead  {
     };
   }
 
-  static async hasAccountRole(
-    facilityAddress: string,
-    role: Uint8Array | string,
-    account: string
-  ): Promise<boolean> {
-    const raw = await callMirrorNode(
-      facilityAddress,
-      "hasAccountRole",
-      ["bytes32", "address"],
-      [role, account]
-    );
-    const coder = AbiCoder.defaultAbiCoder();
-    const [hasRole] = coder.decode(["bool"], raw);
-    return hasRole;
-  }
+  
+
+static async hasAccountRole(
+  facilityAddress: string,
+  role: UserFacilityRole,
+  account: string
+): Promise<boolean> {
+  const raw = await callMirrorNode(
+    facilityAddress,
+    "hasAccountRole",
+    ["bytes32", "address"],
+    [ROLE_HASH[role], account]
+  );
+  const coder = AbiCoder.defaultAbiCoder();
+  const [hasRole] = coder.decode(["bool"], raw);
+  return hasRole;
+}
+static async getUserRole(
+  facilityAddress : string,
+  account : string
+) : Promise<UserFacilityRole>{
+  const raw = await callMirrorNode(
+    facilityAddress,
+    "getUserRole",
+    ["address"],
+    [account]
+  );
+  const coder = AbiCoder.defaultAbiCoder();
+  const [Role] = coder.decode(["uint8"], raw);
+  return Role;
+}
+static async getAdmin(
+  facilityAddress : string
+) : Promise<string>{
+  const raw = await callMirrorNode(
+    facilityAddress,
+    "admin",
+    [],
+    []
+  );
+  const coder = AbiCoder.defaultAbiCoder();
+  const [admin] = coder.decode(["address"], raw);
+  return admin;
+}
 
   
 }

@@ -4,14 +4,17 @@ import {
   Signer,
   Client,
   TransactionReceipt,
+  TransactionId,
 } from "@hiero-ledger/sdk";
-import {facilityAbi} from "./../../Abis"
+import { getBytes } from "ethers";
+import { facilityAbi } from "./../../Abis";
 
+const testnetClient = Client.forTestnet();
 
 export class FacilityContractWrite {
   private static encodeData(functionName: string, args: unknown[]): Uint8Array {
     const hexString = facilityAbi.encodeFunctionData(functionName, args);
-    return Buffer.from(hexString.replace("0x", ""), "hex");
+    return getBytes(hexString);
   }
 
   private static async execute(
@@ -21,21 +24,42 @@ export class FacilityContractWrite {
     args: unknown[],
     gas: number
   ): Promise<TransactionReceipt> {
-    const targetId = ContractId.fromEvmAddress(0, 0, facilityAddress);
-    const parameters = this.encodeData(functionName, args);
+    try {
+      const targetId = facilityAddress.startsWith("0x")
+        ? ContractId.fromEvmAddress(0, 0, facilityAddress)
+        : ContractId.fromString(facilityAddress);
 
-    const transaction = new ContractExecuteTransaction()
-      .setContractId(targetId)
-      .setFunctionParameters(parameters)
-      .setGas(gas);
+      const parameters = this.encodeData(functionName, args);
 
-    const response = await transaction.executeWithSigner(signer);
-    console.log("Transaction ID:", response.transactionId.toString());
+      // Generate TransactionId using the connected wallet's AccountId
+      const accountId = signer.getAccountId();
+      const txId = TransactionId.generate(accountId);
 
-    const receipt = await response.getReceipt(Client.forTestnet());
-    console.log("Transaction status:", receipt.status.toString());
+      // Freeze with testnetClient so nodeAccountIds are automatically populated
+      const transaction = new ContractExecuteTransaction()
+        .setContractId(targetId)
+        .setFunctionParameters(parameters)
+        .setGas(gas)
+        .setTransactionId(txId)
+        .freezeWith(testnetClient);
 
-    return receipt;
+      // Wallet signs and executes the already-frozen transaction
+      const response = await transaction.executeWithSigner(signer);
+      console.log("Transaction ID:", response.transactionId.toString());
+
+      // Poll receipt via SDK client
+      const receipt = await response.getReceipt(testnetClient);
+      console.log("Transaction status:", receipt.status.toString());
+
+      return receipt;
+    } catch (error: any) {
+      console.error(
+        `[FacilityContractWrite.${functionName}] Execution failed:`,
+        error?.message || error,
+        error?.data ? JSON.stringify(error.data) : ""
+      );
+      throw error;
+    }
   }
 
   // ==========================================

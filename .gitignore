@@ -7,3 +7,4 @@ Simulation/Workflow/Init/full_config.json
 lib/
 **/__pycache__
 frontends_for_facilities
+**/*.json

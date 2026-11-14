@@ -2,18 +2,47 @@ import type { ReactNode  , MouseEvent} from "react";
 
 import logo from "../assets/logo_no_brandname.png"; // adjust path to your png
 
+import { useWallet } from '../Common/WalletProvider'; // adjust relative path as needed
+
 export function Topbar({ children }: { children?: ReactNode }) {
+  const { accountId, isConnected, connect, disconnect } = useWallet();
+
   return (
-    <header className="h-14 bg-surface border-b border-border flex items-center px-5 gap-5 sticky top-0 z-50">
-      <div className="flex items-center gap-2 font-semibold text-md">
-        <img
-          src={logo}
-          alt="VERIFACTORY logo"
-          className="w-[40px] h-[40px] object-contain"
-        />
-        <span>VERIFACTORY</span>
+    <header className="h-14 bg-surface border-b border-border flex items-center justify-between px-5 gap-5 sticky top-0 z-50">
+      <div className="flex items-center gap-5">
+        <div className="flex items-center gap-2 font-semibold text-md">
+          <img
+            src={logo}
+            alt="VERIFACTORY logo"
+            className="w-[40px] h-[40px] object-contain"
+          />
+          <span>VERIFACTORY</span>
+        </div>
+        {children}
       </div>
-      {children}
+
+      <div>
+        {isConnected ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono bg-surface-muted border border-border rounded-[5px] px-2.5 py-1 text-ink">
+              {accountId}
+            </span>
+            <button
+              onClick={disconnect}
+              className="rounded-[5px] border border-border-strong bg-surface-muted px-3 py-1.5 text-xs font-semibold text-ink hover:border-red-500 hover:text-red-500 cursor-pointer"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={connect}
+            className="rounded-[5px] border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 cursor-pointer"
+          >
+            Connect Wallet
+          </button>
+        )}
+      </div>
     </header>
   );
 }
@@ -114,3 +143,21 @@ export function Stat({ label, value, delta, deltaTone }: {
     </div>
   );
 }
+export const StatCard: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="bg-surface-muted border border-border rounded-[5px] px-3 py-2.5">
+    <div className="text-[0.68rem] text-ink-muted">{label}</div>
+    <div className="text-sm font-semibold tracking-[-0.01em] mt-0.5">{value}</div>
+  </div>
+);
+
+export const ToolCard: React.FC<{ title: string; description?: string; children: React.ReactNode }> = ({
+  title,
+  description,
+  children,
+}) => (
+  <div className="bg-surface border border-border rounded-md p-4">
+    <div className="text-sm font-semibold mb-1">{title}</div>
+    {description && <p className="text-xs text-ink-muted mb-3">{description}</p>}
+    {children}
+  </div>
+);

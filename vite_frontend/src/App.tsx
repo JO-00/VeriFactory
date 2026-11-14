@@ -3,12 +3,13 @@ import { Topbar, Sidebar, SidebarSection, NavItem } from "./Components/ui";
 import FacilityList from "./Dashboards/FactoryDashboard/FacilityList";
 import DAOMembersPanel from "./Dashboards/DAOMembersPanel";
 import CommitteePanel from "./Dashboards/CommitteePanel";
+import { WalletProvider } from "./Common/WalletProvider";
 
 function App() {
   const [activeView, setActiveView] = useState("facilities");
 
   return (
-    <>
+    <WalletProvider>
       <Topbar />
       <div className="flex min-h-[calc(100vh-56px)]">
         <Sidebar>
@@ -78,7 +79,7 @@ function App() {
           {activeView === "settings" && <div>Settings view</div>}
         </main>
       </div>
-    </>
+    </WalletProvider>
   );
 }
 

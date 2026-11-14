@@ -1,6 +1,6 @@
 // ============== DAOMembersPanel.tsx ==============
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FACILITY_META } from '../Dashboards/dashboard_constants';
 import { getFacilityMeta } from '../Functionalities/getFacilityInfo';
 import {
@@ -12,35 +12,87 @@ import {
   COMMITTEE_SIZE,
 } from '../Functionalities/dao_math';
 
+type FacilityRow = {
+  address: string;
+  name: string;
+  memberCount: number;
+  stakes: number[];
+  totalStaked: number;
+};
+
+type ProbRow = {
+  address: string;
+  name: string;
+  memberCount: number;
+  totalStaked: number;
+  pAtLeast1: number;
+  pAtLeast2: number;
+  pAll: number;
+};
+
 const DAOMembersPanel: React.FC = () => {
-  const addresses = useMemo(() => Object.keys(FACILITY_META), []);
+  const addresses = React.useMemo(() => Object.keys(FACILITY_META), []);
 
-  const facilityRows = useMemo(
-    () =>
-      addresses.map((address) => ({
-        address,
-        name: getFacilityMeta(address)?.name ?? address,
-        ...computeFacilityDAOStats(address, getFacilityMeta(address)?.name),
-      })),
-    [addresses]
+  const [facilityRows, setFacilityRows] = useState<FacilityRow[]>([]);
+  const [probRows, setProbRows] = useState<ProbRow[]>([]);
+  const [globalStats, setGlobalStats] = useState(() =>
+    computeGlobalDAOStats([])
   );
+  const [loading, setLoading] = useState(true);
 
-  const globalStats = useMemo(
-    () => computeGlobalDAOStats(addresses),
-    [addresses]
-  );
+  useEffect(() => {
+    let cancelled = false;
 
-  const probRows = useMemo(
-    () =>
-      computeProbabilityTable(
-        addresses.map((address) => ({
-          address,
-          name: getFacilityMeta(address)?.name ?? address,
-        })),
-        globalStats.totalMembers
-      ),
-    [addresses, globalStats.totalMembers]
-  );
+    (async () => {
+      setLoading(true);
+
+      // Resolve all facility names first
+      const resolved = await Promise.all(
+        addresses.map(async (address) => {
+          const meta = await getFacilityMeta(address);
+          return { address, name: meta?.name ?? address };
+        })
+      );
+
+      const nameByAddress = new Map(resolved.map((r) => [r.address, r.name]));
+
+      const rows: FacilityRow[] = addresses.map((address) => ({
+        ...computeFacilityDAOStats(address, nameByAddress.get(address)),
+      }));
+
+      const gStats = computeGlobalDAOStats(addresses);
+
+      const probs = computeProbabilityTable(
+        resolved,
+        gStats.totalMembers
+      );
+
+      if (cancelled) return;
+
+      setFacilityRows(rows);
+      setGlobalStats(gStats);
+      setProbRows(probs);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addresses]);
+
+  if (loading) {
+    return (
+      <div className="text-ink">
+        <div className="mb-5">
+          <h1 className="text-xl font-semibold tracking-[-0.01em]">DAO Members</h1>
+          <p className="text-sm text-ink-muted mt-0.5">
+            Who secures the network — one wallet per seat, up to 3 seats per facility.
+          </p>
+        </div>
+        <div className="text-sm text-ink-muted">Loading DAO members…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="text-ink">
@@ -83,68 +135,68 @@ const DAOMembersPanel: React.FC = () => {
 
       {/* Per-facility spending (flex list) */}
       <section className="mb-5">
-  <h2 className="text-sm font-semibold text-ink mb-2">
-    What each facility spent on DAO seats
-  </h2>
-  <div className="bg-surface border border-border rounded-md divide-y divide-border">
-    {facilityRows.map((row) => {
-      const empty = row.memberCount === 0;
-      const seats = row.memberCount;
-      const pct = Math.min(100, Math.round((seats / 3) * 100));
-      const barColor =
-        seats === 0
-          ? '#3b82f6'   // blue
-          : seats === 1
-          ? '#22c55e'   // green
-          : seats === 2
-          ? '#eab308'   // yellow
-          : '#ef4444';  // red
+        <h2 className="text-sm font-semibold text-ink mb-2">
+          What each facility spent on DAO seats
+        </h2>
+        <div className="bg-surface border border-border rounded-md divide-y divide-border">
+          {facilityRows.map((row) => {
+            const empty = row.memberCount === 0;
+            const seats = row.memberCount;
+            const pct = Math.min(100, Math.round((seats / 3) * 100));
+            const barColor =
+              seats === 0
+                ? '#3b82f6'   // blue
+                : seats === 1
+                ? '#22c55e'   // green
+                : seats === 2
+                ? '#eab308'   // yellow
+                : '#ef4444';  // red
 
-      return (
-        <div key={row.address} className="flex items-center gap-4 px-4 py-3">
-          {/* Left: name + address */}
-          <div className="min-w-0 flex-1">
-            <div className="font-medium text-sm truncate">{row.name}</div>
-            <div className="font-mono text-[0.7rem] text-ink-muted break-all">
-              {row.address}
-            </div>
-          </div>
+            return (
+              <div key={row.address} className="flex items-center gap-4 px-4 py-3">
+                {/* Left: name + address */}
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-sm truncate">{row.name}</div>
+                  <div className="font-mono text-[0.7rem] text-ink-muted break-all">
+                    {row.address}
+                  </div>
+                </div>
 
-          {/* Middle: seats progress bar */}
-          <div
-            className="shrink-0 w-48"
-            title={`${seats} DAO member${seats === 1 ? '' : 's'}`}
-          >
-            <div className="h-2.5 w-full rounded-full bg-surface-muted border border-border overflow-hidden">
-              <div
-                className="h-full rounded-full transition-[width] duration-300"
-                style={{ width: `${pct}%`, background: barColor }}
-              />
-            </div>
-          </div>
+                {/* Middle: seats progress bar */}
+                <div
+                  className="shrink-0 w-48"
+                  title={`${seats} DAO member${seats === 1 ? '' : 's'}`}
+                >
+                  <div className="h-2.5 w-full rounded-full bg-surface-muted border border-border overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-300"
+                      style={{ width: `${pct}%`, background: barColor }}
+                    />
+                  </div>
+                </div>
 
-          {/* Right: per-seat stakes + total */}
-          <div className="shrink-0 w-56 text-right text-[0.72rem] text-ink-muted">
-            {empty ? (
-              <span className="text-ink-faint">no seats</span>
-            ) : (
-              row.stakes.map((s, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="text-ink-faint"> · </span>}
-                  {formatStake(s)}
-                </span>
-              ))
-            )}
-          </div>
+                {/* Right: per-seat stakes + total */}
+                <div className="shrink-0 w-56 text-right text-[0.72rem] text-ink-muted">
+                  {empty ? (
+                    <span className="text-ink-faint">no seats</span>
+                  ) : (
+                    row.stakes.map((s, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="text-ink-faint"> · </span>}
+                        {formatStake(s)}
+                      </span>
+                    ))
+                  )}
+                </div>
 
-          <div className="shrink-0 w-24 text-right font-medium text-sm">
-            {empty ? '—' : formatStake(row.totalStaked)}
-          </div>
+                <div className="shrink-0 w-24 text-right font-medium text-sm">
+                  {empty ? '—' : formatStake(row.totalStaked)}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      );
-    })}
-  </div>
-</section>
+      </section>
 
       {/* Dominating facilities & draw probabilities (original table) */}
       <section>

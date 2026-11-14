@@ -4,6 +4,8 @@ out/
 lib/
 artifacts/
 
+.deps
+.github
 
 # Commonly ignored directories
 .logs/

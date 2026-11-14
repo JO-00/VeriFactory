@@ -17,7 +17,7 @@ export interface FacilityData {
 
 import { BigNumber } from "bignumber.js";
 
-type BigNumberType = InstanceType<typeof BigNumber>;
+export type BigNumberType = InstanceType<typeof BigNumber>;
 
 export interface CadencePolicy {
   expectedInterval: BigNumberType;
@@ -70,4 +70,31 @@ export interface WrappedCandidate{
 export interface StakedMember{
   wallet : string;
   amount : bigint | number;
+}
+
+export enum UserFacilityRole{
+  Admin,
+  Relayer,
+  Observer
+
+}
+
+export interface Measurement {
+  documentCid: string;
+  signature: string;
+  verified: boolean;
+}
+
+export interface FacilityAddedEvent {
+  facilityAddress: string;
+  name: string;
+  addedBy: string;
+  location: string;
+  sectorType: string;
+  isActive: boolean;
+  // Provenance (useful for UI / debugging)
+  transactionHash: string;
+  blockNumber: number;
+  logIndex: number;
+  timestamp: string;
 }
