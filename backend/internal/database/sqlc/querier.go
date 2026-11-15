@@ -9,11 +9,17 @@ import (
 )
 
 type Querier interface {
+	AddUserFavoriteFacility(ctx context.Context, arg AddUserFavoriteFacilityParams) error
+	ClearUserFavoriteFacilities(ctx context.Context, lower string) error
 	CountFacilityReviews(ctx context.Context, lower string) (int64, error)
 	DeleteFacilityReview(ctx context.Context, arg DeleteFacilityReviewParams) (int64, error)
 	GetFacilityReputation(ctx context.Context, lower string) (GetFacilityReputationRow, error)
+	GetUser(ctx context.Context, lower string) (VerifactoryUser, error)
 	ListFacilityReviews(ctx context.Context, arg ListFacilityReviewsParams) ([]VerifactoryFacilityReview, error)
+	ListUserFavoriteFacilities(ctx context.Context, lower string) ([]string, error)
+	RemoveUserFavoriteFacility(ctx context.Context, arg RemoveUserFavoriteFacilityParams) (int64, error)
 	UpsertFacilityReview(ctx context.Context, arg UpsertFacilityReviewParams) (VerifactoryFacilityReview, error)
+	UpsertUser(ctx context.Context, lower string) (VerifactoryUser, error)
 }
 
 var _ Querier = (*Queries)(nil)

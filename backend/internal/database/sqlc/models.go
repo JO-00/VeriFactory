@@ -19,3 +19,15 @@ type VerifactoryFacilityReview struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
+
+type VerifactoryUser struct {
+	WalletAddress string             `json:"wallet_address"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VerifactoryUserFavoriteFacility struct {
+	WalletAddress   string             `json:"wallet_address"`
+	FacilityAddress string             `json:"facility_address"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"veriFactory/backend/internal/modules/reviews"
+	"veriFactory/backend/internal/modules/users"
 )
 
 func (s *Server) registerRoutes() {
@@ -45,5 +46,10 @@ func (s *Server) registerRoutes() {
 		reviewsSvc := reviews.NewService(reviewsRepo, s.logger)
 		reviewsHandler := reviews.NewHandler(reviewsSvc, s.logger)
 		reviewsHandler.RegisterRoutes(api)
+
+		usersRepo := users.NewRepository(s.db)
+		usersSvc := users.NewService(usersRepo, s.logger)
+		usersHandler := users.NewHandler(usersSvc, s.logger)
+		usersHandler.RegisterRoutes(api)
 	}
 }

@@ -1,9 +1,0 @@
-POST /api/v1/facilities/:addr/reviews
-
-PUT /api/v1/facilities/:addr/reviews
-
-DELETE /api/v1/facilities/:addr/reviews
-
-GET /api/v1/facilities/:addr/reviews
-
-GET /api/v1/facilities/:addr/reputation
