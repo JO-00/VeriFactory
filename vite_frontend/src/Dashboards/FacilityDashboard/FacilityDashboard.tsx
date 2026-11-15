@@ -12,7 +12,7 @@ import {
   getFacilityDaoMembers,
   getFacilitySignedContracts,
 } from './../facillity_dashboard_mocks';
-import type { CadencePolicy, FacilityAddedEvent, StakedMember } from './../../types';
+import type { CadencePolicy, FacilityAddedEvent, SignedContract, StakedMember } from './../../types';
 import { SignContractModal } from './../../Components/SignContractsModal';
 import { FactoryWriteContract } from '../../HashGraphUtils/Contracts/Factory/FactoryWrite';
 import { UserFacilityRole } from './../../types';
@@ -21,6 +21,7 @@ import { useWallet } from './../../Common/WalletProvider';
 import { EntityModal } from './RelayerGateways';
 import { resolveEvmAddress, getAllContracts } from '../../Functionalities/getFacilityInfo';
 import { SignContractsPanel } from './SignContractsPanel';
+import { DeleteFacilityDangerZone } from './../../Components/DeleteFacilityDangerZone';
 import {
   FacilityHeader,
   StatusStrip,
@@ -51,12 +52,12 @@ interface FacilityDashboardProps {
 
 export const FACILITY_DASHBOARD_STORAGE_KEY = 'lastFacilityAddress';
 
-const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
+export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
   facilityAddress,
   role,
   onClose,
 }) => {
-  const { signer, accountId, isConnected, personalSign } = useWallet();
+  const { signer, accountId, isConnected, personalSignHash } = useWallet();
 
   const isAdmin = role === UserFacilityRole.Admin;
   const isRelayer = role === UserFacilityRole.Relayer || isAdmin;
@@ -92,7 +93,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
 
   // ── Signed contracts ──
   const [allContracts, setAllContracts] = useState<string[]>([]);
-  const [signedContracts, setSignedContracts] = useState<string[]>([]);
+  const [signedContracts, setSignedContracts] = useState<SignedContract[]>([]);
   const [signModalCid, setSignModalCid] = useState<string | null>(null);
 
   const refreshDao = useCallback(async () => {
@@ -293,6 +294,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
       {/* DAO members — clickable card, visible to everyone */}
       <div className="mb-4 max-w-xs">
         <DAOMembersCard
+          facilityAddress={facilityAddress}
           members={daoMembers}
           loading={daoLoading}
           onOpenModal={() => setDaoModalOpen(true)}
@@ -305,7 +307,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           facilityAddress={facilityAddress}
           signer={signer}
           allContracts={allContracts}
-          signedContracts={signedContracts}
+          signedContracts={signedContracts}   // ← SignedContract[]
           onOpenSign={(cid) => setSignModalCid(cid)}
         />
       )}
@@ -415,7 +417,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           cid={signModalCid}
           facilityAddress={facilityAddress}
           signer={signer}
-          personalSign={personalSign}
+          personalSign={personalSignHash}
           onClose={() => setSignModalCid(null)}
           onSubmit={async (v, r, s) => {
             if (!signer) return;
@@ -428,7 +430,7 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
               s
             );
             const fresh = await getFacilitySignedContracts(facilityAddress);
-            setSignedContracts(fresh);
+            setSignedContracts(fresh);        // SignedContract[]
             setSignModalCid(null);
           }}
         />
@@ -442,6 +444,15 @@ const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           onClose={() => setShowURIPreview(false)}
         />
       )}
+      <DeleteFacilityDangerZone
+        facilityName={facility.name}
+        facilityAddress={facilityAddress}
+        signer={signer}
+        onDeleted={() => {
+          // Treat deletion like closing the dashboard
+          closeDashboard();
+        }}
+      />
     </div>
   );
 };

@@ -50,14 +50,8 @@ export interface FacilityCreationPayload {
   sectorType: string;
   initialRelayers: string[];
   initialGateways: InitialGatewayInput[];
-  contracts: DocumentInput[];      // ← was contractCids: string[]
+  contracts: DocumentInput[];
 
-  // ── editable later ──
-  landingPageURI: string;
-  logoCid: string;
-
-  // ── UI metadata ──
-  visibility: 'public' | 'private';
 
   // ── debug ──
   raw: {

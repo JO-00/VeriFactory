@@ -84,7 +84,6 @@ export async function callMirrorNodeEvents(
   inputTypes: string[],
   options: CallMirrorNodeEventsOptions = {}
 ): Promise<RawLog[]> {
-  console.log(getCallerName());
   const isEvmInput = targetAddress.startsWith('0x');
   const evmAddress = toEvmAddress(targetAddress).toLowerCase();
 

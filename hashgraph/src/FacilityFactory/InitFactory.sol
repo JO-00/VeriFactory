@@ -184,6 +184,31 @@ contract InitFactory is FactoryAuth, IInitFactory {
         return cidFound && docFound;
     }
 
+    function _toHexString(bytes32 data) internal pure returns (string memory) {
+        bytes memory alphabet = "0123456789abcdef";
+        bytes memory str = new bytes(66);
+        str[0] = "0";
+        str[1] = "x";
+        for (uint256 i = 0; i < 32; i++) {
+            str[2 + i * 2] = alphabet[uint8(data[i] >> 4)];
+            str[3 + i * 2] = alphabet[uint8(data[i] & 0x0f)];
+        }
+        return string(str);
+    }
+
+    function _resolveCallerAlias(address caller) internal view returns (address) {
+        (bool success, bytes memory result) = address(0x167).staticcall(
+            abi.encodeWithSignature("getEvmAddressAlias(address)", caller)
+        );
+        if (success && result.length >= 64) {
+            (int64 responseCode, address evmAlias) = abi.decode(result, (int64, address));
+            if (responseCode == 22 && evmAlias != address(0)) {
+                return evmAlias;
+            }
+        }
+        return caller;
+    }
+
     function SignTangibleContract(
         string memory DocumentCID,
         address facility_contract,
@@ -214,12 +239,15 @@ contract InitFactory is FactoryAuth, IInitFactory {
 
         // 3. signature covers CID + facility address (bound together)
         bytes32 messageHash = keccak256(abi.encodePacked(DocumentCID, facility_contract));
-        // NOTE: ecrecover expects an eth_sign-style prefix. See below.
-        bytes32 ethSignedHash = keccak256(
-            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        bytes32 hederaSignedHash = keccak256(
+            abi.encodePacked("\x19Hedera Signed Message:\n66", _toHexString(messageHash))
         );
-        address recoveredAddress = ecrecover(ethSignedHash, v, r, s);
-        require(recoveredAddress == msg.sender, "invalid signature");
+        address recoveredAddress = ecrecover(hederaSignedHash, v, r, s);
+        require(recoveredAddress != address(0), "invalid signature");
+        require(
+            recoveredAddress == msg.sender || recoveredAddress == _resolveCallerAlias(msg.sender),
+            "invalid signature"
+        );
 
         // 4. record
         signed.push(SignedContract({

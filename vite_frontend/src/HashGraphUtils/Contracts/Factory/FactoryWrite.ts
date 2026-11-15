@@ -30,7 +30,6 @@ export class FactoryWriteContract {
       .setContractId(contractId)
       .setFunctionParameters(params)
       .setGas(gas);
-    console.log(fee)
 
     if (fee) transaction = transaction.setPayableAmount(Number(fee) / 100_000_000);
 
@@ -113,6 +112,7 @@ export class FactoryWriteContract {
     s: Uint8Array | string,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
+    console.log("here")
     const parameters = this.encodeData("SignTangibleContract", [
       documentCid,
       facilityAddress,
@@ -181,6 +181,16 @@ export class FactoryWriteContract {
   ){
     const parameters = this.encodeData("remove_committee_member",[newCommitteeMemberAddress , facilityAddress]);
     return await this.execute(signer, parameters , gas);
+  }
+
+  static async deleteFacility(
+    signer: Signer,
+    facilityAddress: string,
+    last_document_cid : string = "",
+    gas: number = 1_000_000
+  ): Promise<TransactionReceipt> {
+    const parameters = this.encodeData('removeFacilityFromPlatform', [facilityAddress,last_document_cid]);
+    return await this.execute(signer, parameters, gas);
   }
 
 }

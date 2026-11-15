@@ -37,11 +37,17 @@ abstract contract BaseSetup is Test {
             uploadedAt: 0
         });
 
-        Document[] memory legalContracts = new Document[](1);
+        Document[] memory legalContracts = new Document[](2);
         legalContracts[0] = Document({
             cid: "QmLEGAL",
             docType: "legal",
             title: "Master Service Agreement",
+            uploadedAt: 0
+        });
+        legalContracts[1] = Document({
+            cid: "QmREGISTERED",
+            docType: "legal",
+            title: "Registered Contract",
             uploadedAt: 0
         });
 

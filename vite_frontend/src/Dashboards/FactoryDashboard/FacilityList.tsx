@@ -18,12 +18,12 @@ import {
   authenticateFacility,
 } from '../../Functionalities/getFacilityInfo';
 import { useWallet } from '../../Common/WalletProvider';
-import FacilityDashboard, {
+import {FacilityDashboard,
   FACILITY_DASHBOARD_STORAGE_KEY,
 } from '../FacilityDashboard/FacilityDashboard';
 import FacilityCreationForm from './FacilityCreationForm';
 import FacilityEntry from './../FacilityDashboard/FacilityEntry';
-import { UserFacilityRole } from '../../types';
+import { UserFacilityRole, type SignedContract } from '../../types';
 
 // ── View state ──
 type View =
@@ -92,6 +92,7 @@ const FacilityList: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [signedContracts, setSignedContracts] = useState<SignedContract[]>([]);
 
   // ── Load all facilities once ──
   useEffect(() => {
@@ -122,9 +123,12 @@ const FacilityList: React.FC = () => {
                 getFacilityDocs(address),
               ]);
 
+              // signed is now SignedContract[]; keep only the CIDs for the list view.
+              const signedCids = signed.map((sc) => sc.DocumentCID);
+
               return {
                 address,
-                contracts: signed,
+                contracts: signedCids,      // string[]
                 inspector,
                 meta,
                 landingURI,

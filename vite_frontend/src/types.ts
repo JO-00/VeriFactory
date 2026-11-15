@@ -129,3 +129,10 @@ export interface KeyRotatedEvent {
   timestampMs: number;        // Hedera consensus Unix ms
   timestampDate: Date;        // Hedera consensus Date
 }
+
+export interface SignedContract{
+    DocumentCID : string;
+    v : number;
+    r : number;
+    s : number;
+}

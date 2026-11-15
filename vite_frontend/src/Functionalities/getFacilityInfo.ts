@@ -1,6 +1,6 @@
 import  {type FacilityContract } from "../types";
 import { FACILITY_LANDING_PAGES , FACILITY_CONTRACTS_SIGNED , CONTRACTS_IN_ORDER , FACILITY_DOCS } from "../Dashboards/dashboard_constants";
-import  { type Inspector  , type FacilityMeta, UserFacilityRole} from "../types";
+import  { type Inspector  , type FacilityMeta, UserFacilityRole , type SignedContract} from "../types";
 import type { AuthenticationResult } from "../Dashboards/dashboard_types";
 import {FactoryContractRead} from "./../HashGraphUtils/Contracts/Factory/FactoryRead"
 import { FacilityContractRead } from "../HashGraphUtils/Contracts/Facility/FacilityRead";
@@ -70,7 +70,6 @@ export const authenticateFacility = async (
   }
   else {
     user_role = "Observer";
-    console.log("an observer")
     role = UserFacilityRole.Observer;
   } 
 
@@ -108,6 +107,6 @@ export const getAllContracts = async () : Promise <string[] > => {
   );
 }
 
-export const getFacilitySignedContracts = async (facilityAddress : string) : Promise <string[] > => {
-  return (await FactoryContractRead.getFacilitySignedContracts(facilityAddress)).map(doc => doc.cid);
+export const getFacilitySignedContracts = async (facilityAddress : string) : Promise <SignedContract[] > => {
+  return await FactoryContractRead.getFacilitySignedContracts(facilityAddress)
 }

@@ -2,7 +2,7 @@ import { FACTORY_CONTRACT_ADDRESS } from "./../../configs";
 import { ContractId } from "@hiero-ledger/sdk";
 import { BigNumber } from "bignumber.js";
 import { AbiCoder, JsonRpcProvider, Interface } from "ethers";
-import type { FacilityMeta , DocumentInput , CandidateVotes , WrappedCandidate , StakedMember } from "../../../types";
+import type { FacilityMeta , DocumentInput , CandidateVotes , WrappedCandidate , StakedMember, SignedContract } from "../../../types";
 
 const HEDERA_RPC_URL = "https://testnet.hashio.io/api";
 
@@ -149,7 +149,7 @@ export class FactoryContractRead {
 
   static async getFacilitySignedContracts(
     facilityAddress: string
-  ): Promise<DocumentInput[]> {
+  ): Promise<SignedContract[]> {
     const raw = await callMirrorNode(
       this.getContractId(),
       "getFacilitySignedContracts",
@@ -158,7 +158,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [contracts] = coder.decode(
-      ["tuple(string cid, string docType, string title, uint256 uploadedAt)[]"],
+      ["tuple(string DocumentCID, uint8 v, bytes32 r, bytes32 s)[]"],
       raw
     );
     return contracts;

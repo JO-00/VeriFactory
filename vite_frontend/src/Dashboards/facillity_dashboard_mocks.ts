@@ -2,7 +2,7 @@
 import { EventReader } from "../HashGraphUtils/Events";
 import { FacilityContractRead } from "../HashGraphUtils/Contracts/Facility/FacilityRead";
 import { FacilityContractWrite } from "../HashGraphUtils/Contracts/Facility/FacilityWrite";
-import type { Measurement , CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember} from "../types";
+import type { Measurement , CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember, SignedContract} from "../types";
 import { Signer } from "@hiero-ledger/sdk";
 import { FactoryContractRead } from "../HashGraphUtils/Contracts/Factory/FactoryRead";
 import { FactoryWriteContract } from "../HashGraphUtils/Contracts/Factory/FactoryWrite";
@@ -263,6 +263,6 @@ export async function removeDaoMember(signer : Signer, facilityAddress : string,
 // ── Which contracts this facility has already signed ──
 export const getFacilitySignedContracts = async (
   facilityAddress: string
-): Promise<string[]> => {
-  return (await FactoryContractRead.getFacilitySignedContracts(facilityAddress)).map(d =>d.cid);
+): Promise<SignedContract[]> => {
+  return await FactoryContractRead.getFacilitySignedContracts(facilityAddress);
 };

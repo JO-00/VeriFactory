@@ -51,7 +51,6 @@ export const DAOMembersCard: React.FC<{
 export const DAOMembersModal: React.FC<{
   open: boolean;
   members: StakedMember[];
-  roles: Record<string, UserFacilityRole>;
   onClose: () => void;
 }> = ({ open, members, onClose }) => {
     console.log(members)

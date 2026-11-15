@@ -9,19 +9,13 @@ import {
     ContractCreateFlow,
     ContractExecuteTransaction,
     ContractCallQuery,
-    ContractFunctionParameters,
     Hbar,
-    ContractByteCodeQuery,
-    ContractCreateTransaction,
-    FileCreateTransaction,
-    FileAppendTransaction,
-    FileId
+    ContractByteCodeQuery
 } from "@hiero-ledger/sdk";
 
 import { Interface } from "ethers";
 import { config } from "dotenv";
 import { FacilityParamsBuilder } from "../common_utils/FactoryParamBuilder";
-import { exit } from "process";
 
 config();
 
@@ -39,11 +33,10 @@ const FACILITY_IMPLEMENTATION_ADDRESS = "0x0000000000000000000000000000000000adb
 
 // Leave empty to deploy.
 // Fill with existing Hedera Contract IDs to reuse deployments.
-
 const EXISTING = {
     factory: "0.0.11394765",
     committee: "0.0.11394768",
-    init: "0.0.11394772",
+    init: "0.0.11469426",
     visualization: "0.0.11394774"
 };
 
@@ -111,9 +104,6 @@ async function verifyContractExists(
     contractId: ContractId,
     client: Client
 ): Promise<void> {
-    // A successful ContractCallQuery is not used here:
-    // we verify the contract by querying its bytecode.
-
     const bytecode = await new ContractByteCodeQuery()
         .setContractId(contractId)
         .execute(client);
@@ -129,14 +119,12 @@ async function verifyContractExists(
 // DEPLOYMENT HELPER
 // --------------------------------------------------
 
-
 async function deployContract(
     name: string,
     bytecode: string,
     client: Client,
     gas: number
 ): Promise<ContractId> {
-
     console.log(`\nDeploying ${name}...`);
 
     if (!bytecode || bytecode === "0x") {
@@ -157,8 +145,8 @@ async function deployContract(
     console.log(`Gas limit: ${gas}`);
 
     const flow = new ContractCreateFlow()
-    .setBytecode(cleanBytecode)
-    .setGas(gas);
+        .setBytecode(cleanBytecode)
+        .setGas(gas);
 
     const response = await flow.execute(client);
     const receipt = await response.getReceipt(client);
@@ -193,7 +181,6 @@ async function getOrDeploy(
     client: Client,
     gas: number
 ): Promise<ContractId> {
-
     if (existingId.trim() !== "") {
         const contractId = getContractId(existingId);
 
@@ -213,7 +200,7 @@ async function getOrDeploy(
 }
 
 // --------------------------------------------------
-// FACET REGISTRATION
+// FACET REGISTRATION / UPGRADE
 // --------------------------------------------------
 
 async function registerFacet(
@@ -225,7 +212,6 @@ async function registerFacet(
     functionNames: string[],
     client: Client
 ): Promise<void> {
-
     const iface = new Interface(artifact.abi);
     const factoryInterface = new Interface(factoryArtifact.abi);
 
@@ -242,16 +228,15 @@ async function registerFacet(
     });
 
     const facetAddress = facetId.toEvmAddress();
-
     const expectedAddress = normalizeAddress(facetAddress);
 
     console.log(`\nChecking ${name} selectors...`);
 
-    const missingSelectors: string[] = [];
+    const selectorsToRegister: string[] = [];
 
-    // Check whether a selector is already registered.
+    // Check whether each selector already points to this exact facet address.
+    // Any missing selector OR selector pointing to an older facet address is queued for addFacet().
     for (const selector of selectors) {
-
         const calldata = factoryInterface.encodeFunctionData(
             "facets",
             [selector]
@@ -273,22 +258,8 @@ async function registerFacet(
                 continue;
             }
 
-            if (
-                currentAddress !==
-                "0000000000000000000000000000000000000000"
-            ) {
-                throw new Error(
-                    `${name}: selector ${selector} already points to ` +
-                    `${registeredAddress}, expected ${facetAddress}`
-                );
-            }
-
-            missingSelectors.push(selector);
-
+            selectorsToRegister.push(selector);
         } catch (error: any) {
-
-            // Some custom facets() getters revert when no facet exists.
-            // Only treat the exact "no facet for selector" revert as missing.
             const errorData =
                 error?.contractFunctionResult?.errorMessage ??
                 error?.error?.contractFunctionResult?.errorMessage;
@@ -304,7 +275,7 @@ async function registerFacet(
                 typeof errorData === "string" &&
                 errorData.toLowerCase() === missingFacetRevert.toLowerCase()
             ) {
-                missingSelectors.push(selector);
+                selectorsToRegister.push(selector);
                 continue;
             }
 
@@ -312,19 +283,21 @@ async function registerFacet(
         }
     }
 
-    if (missingSelectors.length === 0) {
+    if (selectorsToRegister.length === 0) {
         console.log(
             `${name}: all ${selectors.length} selectors already registered`
         );
         return;
     }
 
-    console.log(`${name}: ${missingSelectors.length} selectors need registration`);
+    console.log(
+        `${name}: ${selectorsToRegister.length} selectors need registration/update`
+    );
 
-    // Encode addFacet(address,bytes4[]) using ethers.
+    // Encode addFacet(address,bytes4[]) — overwrites existing mappings in Factory.facets
     const encodedFunction = factoryInterface.encodeFunctionData(
         "addFacet",
-        [facetAddress, missingSelectors]
+        [facetAddress, selectorsToRegister]
     );
 
     const transaction = new ContractExecuteTransaction()
@@ -355,7 +328,6 @@ async function registerFacet(
 
     // Verify every selector after registration.
     for (const selector of selectors) {
-
         const calldata = factoryInterface.encodeFunctionData(
             "facets",
             [selector]
@@ -391,9 +363,7 @@ async function registerFacet(
 // --------------------------------------------------
 
 async function main() {
-
     // 1. Load artifacts
-
     const factoryArtifact = findArtifact(["Factory"]);
     const committeeArtifact = findArtifact(["CommitteeInspector"]);
     const initArtifact = findArtifact(["InitFactory"]);
@@ -404,7 +374,6 @@ async function main() {
     ]);
 
     // 2. Connect to Hedera Testnet
-
     const operatorId = process.env.OPERATOR_ID;
     const privateKey = process.env.OPERATOR_KEY;
 
@@ -413,7 +382,7 @@ async function main() {
     }
 
     if (!privateKey) {
-        throw new Error("ECDSA_PRIVATE_KEY missing from .env");
+        throw new Error("OPERATOR_KEY missing from .env");
     }
 
     if (
@@ -426,7 +395,6 @@ async function main() {
     }
 
     const client = Client.forTestnet();
-
     const operatorKey = PrivateKey.fromStringECDSA(privateKey);
 
     client.setOperator(
@@ -438,7 +406,6 @@ async function main() {
         new Hbar(MAX_TRANSACTION_FEE_HBAR)
     );
 
-
     console.log("\nOperator:", operatorId);
     console.log(
         "Default maximum transaction fee:",
@@ -447,13 +414,10 @@ async function main() {
     );
 
     try {
-
-        // 3. Build Factory deployment data using your builder.
-
+        // 3. Build Factory deployment data if deploying fresh
         let factoryDeploymentData = "";
 
         if (!EXISTING.factory) {
-
             const constructorParams =
                 FacilityParamsBuilder.buildConstructorParams(
                     FACILITY_IMPLEMENTATION_ADDRESS,
@@ -471,7 +435,6 @@ async function main() {
         }
 
         // 4. Deploy or reuse Factory
-
         const factoryId = await getOrDeploy(
             "Factory",
             EXISTING.factory,
@@ -481,7 +444,6 @@ async function main() {
         );
 
         // 5. Deploy or reuse facet implementations
-
         const committeeId = await getOrDeploy(
             "CommitteeInspector",
             EXISTING.committee,
@@ -507,7 +469,6 @@ async function main() {
         );
 
         // 6. Register CommitteeInspector selectors
-
         await registerFacet(
             "CommitteeInspector",
             factoryId,
@@ -529,7 +490,6 @@ async function main() {
         );
 
         // 7. Register Visualization selectors
-
         await registerFacet(
             "Visualization",
             factoryId,
@@ -564,8 +524,7 @@ async function main() {
             client
         );
 
-        // 8. Register InitFactory selectors
-
+        // 8. Register / Update InitFactory selectors
         await registerFacet(
             "InitFactory",
             factoryId,
@@ -586,37 +545,30 @@ async function main() {
         );
 
         // 9. Final summary
-
         console.log("\n======================================");
         console.log("FACTORY DEPLOYMENT COMPLETE");
         console.log("======================================");
-
         console.log(
             "Factory:",
             factoryId.toString(),
             factoryId.toEvmAddress()
         );
-
         console.log(
             "CommitteeInspector:",
             committeeId.toString(),
             committeeId.toEvmAddress()
         );
-
         console.log(
             "InitFactory:",
             initId.toString(),
             initId.toEvmAddress()
         );
-
         console.log(
             "Visualization:",
             visualizationId.toString(),
             visualizationId.toEvmAddress()
         );
-
         console.log("======================================");
-
     } finally {
         client.close();
     }
