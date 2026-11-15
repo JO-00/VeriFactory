@@ -444,7 +444,8 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           onClose={() => setShowURIPreview(false)}
         />
       )}
-      <DeleteFacilityDangerZone
+      {isAdmin && (
+        <DeleteFacilityDangerZone
         facilityName={facility.name}
         facilityAddress={facilityAddress}
         signer={signer}
@@ -452,7 +453,8 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           // Treat deletion like closing the dashboard
           closeDashboard();
         }}
-      />
+      />)
+          }
     </div>
   );
 };

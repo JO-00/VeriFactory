@@ -1,6 +1,6 @@
 // ============== CommitteePanel.tsx ==============
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getFacilityMeta } from '../Functionalities/getFacilityInfo';
 import {
   get_current_committee,
@@ -11,9 +11,11 @@ import {
   can_generate_new_committee,
   get_seconds_until_next_committee,
   format_remaining_time,
-  is_current_user_committee_member,
+  is_user_committee_member,
 } from '../Functionalities/committee_math';
 import { MAX_PREFERENCES } from './dashboard_constants';
+import type { CandidateVotes } from '../types';
+import { useWallet } from '../Common/WalletProvider';
 
 // ------------------------------------------------------------
 // Silhouette avatar
@@ -26,39 +28,111 @@ const PersonSilhouette: React.FC<{ color: string }> = ({ color }) => (
 );
 
 const CommitteePanel: React.FC = () => {
-  // ----- static data -----
-  const committee = useMemo(() => get_current_committee(), []);
-  const candidates = useMemo(() => get_candidates(), []);
-  const votesFrozen = useMemo(() => get_votes_status(), []);
-  const isCommitteeMember = useMemo(() => is_current_user_committee_member(), []);
-
-  const top6 = useMemo(
-    () => (votesFrozen ? get_top_6_candidates() : []),
-    [votesFrozen]
-  );
-
-  const inspectorMap = useMemo(() => {
-    if (!votesFrozen) return {};
-    // The "winning inspectors" are the top 5 (contract keeps 5).
-    const winners = top6.slice(0, 5).map((c) => c.wallet);
-    return get_facility_to_inspector_map(winners);
-  }, [votesFrozen, top6]);
+  // ----- async data states -----
+  const { accountId } = useWallet();
+  const [loading, setLoading] = useState(true);
+  const [committee, setCommittee] = useState<string[]>([]);
+  const [candidates, setCandidates] = useState<{ candidate: string; is_compliant: boolean }[]>([]);
+  const [votesFrozen, setVotesFrozen] = useState(false);
+  const [isCommitteeMember, setIsCommitteeMember] = useState(false);
+  const [top6, setTop6] = useState<CandidateVotes[]>([]);
+  const [inspectorMap, setInspectorMap] = useState<Record<string, string[]>>({});
+  
+  // To resolve facility names for the inspected list
+  const [facilityNames, setFacilityNames] = useState<Record<string, string>>({});
 
   // ----- countdown -----
   const [nowUnix, setNowUnix] = useState(() => Date.now() / 1000);
-
-  useEffect(() => {
-    const id = setInterval(() => setNowUnix(Date.now() / 1000), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const secondsLeft = get_seconds_until_next_committee(nowUnix);
-  const canGenerate = can_generate_new_committee(nowUnix);
+  const [canGenerate, setCanGenerate] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(0);
 
   // ----- ranking state -----
   const [rankingMode, setRankingMode] = useState(false);
   const [preferences, setPreferences] = useState<string[]>([]);
 
+  // 1. Initial Fetch
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        // Fetch independent data in parallel
+        const [comm, cands, frozen, isMember] = await Promise.all([
+          get_current_committee(),
+          get_candidates(),
+          get_votes_status(),
+          is_user_committee_member(accountId),
+        ]);
+        if (cancelled) return;
+
+        setCommittee(comm);
+        setCandidates(cands);
+        setVotesFrozen(frozen);
+        setIsCommitteeMember(isMember);
+
+        // If votes are frozen, fetch the results & inspector map
+        if (frozen) {
+          const winners = await get_top_6_candidates();
+          if (cancelled) return;
+          setTop6(winners);
+
+          const map = await get_facility_to_inspector_map(winners.slice(0, 5).map((c) => c.wallet));
+          if (cancelled) return;
+          setInspectorMap(map);
+
+          // Resolve facility names for the inspector map
+          const allFacilities = Object.values(map).flat();
+          const names: Record<string, string> = {};
+          await Promise.all(
+            allFacilities.map(async (addr) => {
+              const meta = await getFacilityMeta(addr);
+              names[addr] = meta?.name ?? addr;
+            })
+          );
+          if (cancelled) return;
+          setFacilityNames(names);
+        }
+      } catch (err) {
+        console.error('[CommitteePanel] load failed', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // 2. Countdown timer
+  useEffect(() => {
+    let cancelled = false;
+
+    const tick = async () => {
+      const now = Date.now() / 1000;
+      setNowUnix(now);
+      
+      const [gen, secs] = await Promise.all([
+        can_generate_new_committee(now),
+        get_seconds_until_next_committee(now),
+      ]);
+      if (cancelled) return;
+      
+      setCanGenerate(gen);
+      setSecondsLeft(secs);
+    };
+
+    // Run immediately
+    tick();
+
+    // Then every second
+    const id = setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // ----- ranking logic -----
   const toggleCandidate = (wallet: string) => {
     if (!rankingMode || !isCommitteeMember) return;
     setPreferences((prev) => {
@@ -80,6 +154,20 @@ const CommitteePanel: React.FC = () => {
   };
 
   const canSubmit = isCommitteeMember && preferences.length >= 1 && !votesFrozen;
+
+  if (loading) {
+    return (
+      <div className="text-ink">
+        <div className="mb-5">
+          <h1 className="text-xl font-semibold tracking-[-0.01em]">Committee</h1>
+          <p className="text-sm text-ink-muted mt-0.5">
+            Current committee, voting window, and candidate ranking.
+          </p>
+        </div>
+        <div className="text-sm text-ink-muted">Loading committee data…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="text-ink">
@@ -257,7 +345,7 @@ const CommitteePanel: React.FC = () => {
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {facilities.map((addr) => {
-                      const name = getFacilityMeta(addr)?.name ?? addr;
+                      const name = facilityNames[addr] || addr;
                       return (
                         <span
                           key={addr}

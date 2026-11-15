@@ -112,7 +112,6 @@ export class FactoryWriteContract {
     s: Uint8Array | string,
     gas: number = 1_000_000
   ): Promise<TransactionReceipt> {
-    console.log("here")
     const parameters = this.encodeData("SignTangibleContract", [
       documentCid,
       facilityAddress,
@@ -120,7 +119,6 @@ export class FactoryWriteContract {
       r,
       s,
     ]);
-    console.log(`v= ${v}\nr= ${r}\ns = ${s}`)
 
     return await this.execute(signer, parameters , gas);
   }
@@ -191,6 +189,21 @@ export class FactoryWriteContract {
   ): Promise<TransactionReceipt> {
     const parameters = this.encodeData('removeFacilityFromPlatform', [facilityAddress,last_document_cid]);
     return await this.execute(signer, parameters, gas);
+  }
+
+  static async signInspectorContract(
+    signer: Signer,
+    v: number,
+    r: Uint8Array | string,
+    s: Uint8Array | string,
+    gas: number = 1_000_000
+  ): Promise<TransactionReceipt> {
+    const parameters = this.encodeData("InspectorSignContract", [
+      v,
+      r,
+      s,
+    ]);
+    return await this.execute(signer, parameters , gas);
   }
 
 }

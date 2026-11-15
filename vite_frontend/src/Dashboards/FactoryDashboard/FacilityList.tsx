@@ -1,6 +1,6 @@
 // FacilityList.tsx
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   PreviewModal,
   LandingPagePreviewModal,
@@ -18,12 +18,13 @@ import {
   authenticateFacility,
 } from '../../Functionalities/getFacilityInfo';
 import { useWallet } from '../../Common/WalletProvider';
-import {FacilityDashboard,
+import {
+  FacilityDashboard,
   FACILITY_DASHBOARD_STORAGE_KEY,
 } from '../FacilityDashboard/FacilityDashboard';
 import FacilityCreationForm from './FacilityCreationForm';
 import FacilityEntry from './../FacilityDashboard/FacilityEntry';
-import { UserFacilityRole, type SignedContract } from '../../types';
+import { UserFacilityRole } from '../../types';
 
 // ── View state ──
 type View =
@@ -67,6 +68,8 @@ const FacilityList: React.FC = () => {
   const { signer, isConnected } = useWallet();
 
   const [hydrated, setHydrated] = useState<HydratedFacility[]>([]);
+  const [totalExpected, setTotalExpected] = useState<number | null>(null);
+  const [activeAddress, setActiveAddress] = useState<string | null>(null);
   const [totalContracts, setTotalContracts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,9 +81,6 @@ const FacilityList: React.FC = () => {
   } | null>(null);
 
   // ── Restore-from-storage bootstrap ──
-  // If localStorage says we were on a dashboard, we need to
-  // (a) hide the list view while we re-authenticate, and
-  // (b) re-derive role/result because those aren't persisted.
   const [storedAddress] = useState<string | null>(readStoredFacility);
   const [bootstrapping, setBootstrapping] = useState<boolean>(
     () => storedAddress !== null
@@ -92,71 +92,93 @@ const FacilityList: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [signedContracts, setSignedContracts] = useState<SignedContract[]>([]);
 
-  // ── Load all facilities once ──
-  useEffect(() => {
-    let cancelled = false;
+  // Guard against overlapping reloads (e.g., StrictMode or post-create retry)
+  const loadSeqRef = useRef(0);
 
-    (async () => {
+  // ── Reusable progressive load ──
+  const reloadFacilities = useCallback(async (background = false) => {
+    const seq = ++loadSeqRef.current;
+
+    if (!background) {
       setLoading(true);
-      setLoadError(null);
+      setHydrated([]);
+      setTotalExpected(null);
+    }
+    setLoadError(null);
 
-      try {
-        const contracts = await getAllContracts();
-        if (cancelled) return;
-        setTotalContracts(contracts);
+    try {
+      const [contracts, allMeta] = await Promise.all([
+        getAllContracts(),
+        FetchAllFacilities(),
+      ]);
+      if (seq !== loadSeqRef.current) return;
 
-        const allMeta = await FetchAllFacilities();
-        if (cancelled) return;
+      setTotalContracts(contracts);
+      const addresses = Object.keys(allMeta);
+      setTotalExpected(addresses.length);
 
-        const addresses = Object.keys(allMeta);
+      const nextList: HydratedFacility[] = [];
 
-        const results = await Promise.all(
-          addresses.map(async (address): Promise<HydratedFacility | null> => {
-            try {
-              const [signed, inspector, meta, landingURI, docs] = await Promise.all([
-                getFacilitySignedContracts(address),
-                getFacilityInspector(address),
-                getFacilityMeta(address),
-                getFacilityURI(address),
-                getFacilityDocs(address),
-              ]);
+      for (const address of addresses) {
+        if (seq !== loadSeqRef.current) return;
+        setActiveAddress(address);
 
-              // signed is now SignedContract[]; keep only the CIDs for the list view.
-              const signedCids = signed.map((sc) => sc.DocumentCID);
+        try {
+          const [signed, inspector, meta, landingURI, docs] = await Promise.all([
+            getFacilitySignedContracts(address),
+            getFacilityInspector(address),
+            getFacilityMeta(address),
+            getFacilityURI(address),
+            getFacilityDocs(address),
+          ]);
+          if (seq !== loadSeqRef.current) return;
 
-              return {
-                address,
-                contracts: signedCids,      // string[]
-                inspector,
-                meta,
-                landingURI,
-                docs: docs as string[],
-              };
-            } catch (err) {
-              console.error(`Failed to load facility ${address}:`, err);
-              return null;
-            }
-          })
-        );
+          const item: HydratedFacility = {
+            address,
+            contracts: signed.map((sc) => sc.DocumentCID),
+            inspector,
+            meta,
+            landingURI,
+            docs: docs as string[],
+          };
 
-        if (cancelled) return;
-        setHydrated(results.filter((r): r is HydratedFacility => r !== null));
-      } catch (err) {
-        if (cancelled) return;
+          nextList.push(item);
+
+          if (!background) {
+            setHydrated((prev) => [...prev, item]);
+          }
+        } catch (err) {
+          console.error(`Failed to load facility ${address}:`, err);
+        }
+      }
+
+      if (seq !== loadSeqRef.current) return;
+      if (background) {
+        setHydrated(nextList);
+      }
+      setActiveAddress(null);
+    } catch (err) {
+      if (seq === loadSeqRef.current) {
         setLoadError(
           err instanceof Error ? err.message : 'Failed to load facilities.'
         );
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+        setActiveAddress(null);
+      }
+    }
   }, []);
+
+  // ── Load on mount ──
+  useEffect(() => {
+    reloadFacilities();
+    return () => {
+      loadSeqRef.current++;
+    };
+  }, [reloadFacilities]);
 
   // ── Bootstrap: silently re-authenticate against the stored facility ──
   useEffect(() => {
@@ -165,8 +187,6 @@ const FacilityList: React.FC = () => {
       return;
     }
 
-    // Wait until the wallet is ready before hitting auth.
-    // Until then, keep `bootstrapping` true so the UI shows "Restoring…".
     if (!isConnected || !signer) {
       return;
     }
@@ -185,11 +205,9 @@ const FacilityList: React.FC = () => {
             facilityAddress: result.facilityAddress,
             role: result.role,
             result,
-            // Don't replay the success modal on refresh — it's stale context
             showModal: false,
           });
         } else {
-          // Stored facility is no longer accessible (role revoked, deleted, etc.)
           clearStoredFacility();
           setBootstrapError(result.message ?? 'Could not restore dashboard.');
         }
@@ -246,7 +264,7 @@ const FacilityList: React.FC = () => {
     [isConnected, signer]
   );
 
-  // ── Filter (pure — uses resolved meta) ──
+  // ── Filter ──
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return hydrated;
@@ -265,16 +283,27 @@ const FacilityList: React.FC = () => {
     (h) => h.contracts.length > 0 && h.contracts.length === totalContracts.length
   ).length;
 
-  // ── Return-to-list helper (used by both dashboard back + onClose) ──
   const goBackToList = useCallback(() => {
     clearStoredFacility();
     setView({ kind: 'list' });
     setBootstrapError(null);
   }, []);
 
+  // ── After successful create: close form, reload, retry if needed ──
+  const handleFacilityCreated = useCallback(async () => {
+    setShowForm(false);
+
+    // First refresh — streams entries immediately
+    await reloadFacilities(false);
+
+    // Mirror node indexing can lag a couple seconds; silent background sync
+    setTimeout(() => {
+      reloadFacilities(true);
+    }, 3000);
+  }, [reloadFacilities]);
+
   // ── Render branches ──
 
-  // 1. Restoring stored dashboard on refresh — don't flash the list
   if (bootstrapping) {
     return (
       <div className="text-ink">
@@ -286,7 +315,6 @@ const FacilityList: React.FC = () => {
     );
   }
 
-  // 2. Creation form
   if (showForm) {
     return (
       <div className="text-ink">
@@ -298,12 +326,11 @@ const FacilityList: React.FC = () => {
             ← Back to facilities
           </button>
         </div>
-        <FacilityCreationForm />
+        <FacilityCreationForm onCreated={handleFacilityCreated} />
       </div>
     );
   }
 
-  // 3. Dashboard view
   if (view.kind === 'dashboard') {
     return (
       <div className="text-ink relative">
@@ -332,17 +359,15 @@ const FacilityList: React.FC = () => {
     );
   }
 
-  // 4. LIST VIEW
+  // ── LIST VIEW ──
   return (
     <div className="text-ink">
-      {/* Bootstrap error surfaced after we fell back to list */}
       {bootstrapError && (
         <div className="mb-3 bg-[#fff8e6] border border-[#f0d58a] rounded-md px-4 py-2 text-sm text-[#7a5b00]">
           {bootstrapError}
         </div>
       )}
 
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h1 className="text-xl font-semibold tracking-[-0.01em]">Facilities</h1>
@@ -381,12 +406,14 @@ const FacilityList: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI strip */}
       <div className="grid grid-cols-4 gap-3.5 mb-5">
         <div className="bg-surface border border-border rounded-md px-4 py-3.5">
           <div className="text-sm text-ink-muted">Facilities</div>
           <div className="text-2xl font-semibold tracking-[-0.02em] mt-1.5">
             {totalFacilities}
+            {totalExpected !== null && loading && (
+              <span className="text-ink-faint text-lg">/{totalExpected}</span>
+            )}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-md px-4 py-3.5">
@@ -410,7 +437,13 @@ const FacilityList: React.FC = () => {
       </div>
 
       {loading && (
-        <div className="mb-2 text-sm text-ink-muted">Loading facilities…</div>
+        <div className="mb-2 text-xs font-mono text-ink-muted">
+          {totalExpected === null
+            ? 'Loading facilities…'
+            : `Loaded ${hydrated.length} / ${totalExpected}${
+                activeAddress ? ` (fetching ${activeAddress.slice(0, 10)}…)` : ''
+              }`}
+        </div>
       )}
       {loadError && <div className="mb-2 text-sm text-red-600">{loadError}</div>}
       {authLoading && (
@@ -425,21 +458,32 @@ const FacilityList: React.FC = () => {
             : 'No facilities yet.'}
         </div>
       ) : (
-        filtered.map((h) => (
-          <FacilityEntry
-            key={h.address}
-            facility={h}
-            meta={h.meta}
-            landingURI={h.landingURI}
-            docs={h.docs}
-            totalContracts={totalContracts}
-            onPreview={(cid) => setPreviewCID(cid)}
-            onAuthenticate={handleAuthenticate}
-            onPreviewLandingPage={(facilityAddress, uri) =>
-              setPreviewLanding({ facilityAddress, uri })
-            }
-          />
-        ))
+        <>
+          {filtered.map((h) => (
+            <FacilityEntry
+              key={h.address}
+              facility={h}
+              meta={h.meta}
+              landingURI={h.landingURI}
+              docs={h.docs}
+              totalContracts={totalContracts}
+              onPreview={(cid) => setPreviewCID(cid)}
+              onAuthenticate={handleAuthenticate}
+              onPreviewLandingPage={(facilityAddress, uri) =>
+                setPreviewLanding({ facilityAddress, uri })
+              }
+            />
+          ))}
+
+          {loading && activeAddress && (
+            <div className="bg-surface border border-border rounded-md px-4 py-4 mb-3 animate-pulse">
+              <div className="h-4 bg-surface-muted rounded w-1/4 mb-2" />
+              <div className="font-mono text-xs text-ink-faint">
+                {activeAddress}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {previewCID && (

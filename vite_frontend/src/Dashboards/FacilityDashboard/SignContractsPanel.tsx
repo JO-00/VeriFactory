@@ -11,7 +11,6 @@ import {
 } from 'ethers';
 import { shortAddr } from './../facillity_dashboard_mocks';
 import type { SignedContract } from './../../types';
-import { ModalShell } from './../../Components/Modals';
 import { fetchIPFSBlobUrl, isImageCID } from './../../Functionalities/IPFSHelpers'; // adjust path
 
 export interface SignContractsPanelProps {

@@ -7,7 +7,6 @@ import { validateRelayerGatewayJSON, buildInitialGateways } from '../../Function
 import { useWallet } from '../../Common/WalletProvider';
 import { FactoryWriteContract } from './../../HashGraphUtils/Contracts/Factory/FactoryWrite';
 import { fetchIPFSBlobUrl, isImageCID } from './../../Functionalities/IPFSHelpers'; // adjust path
-import { TransactionReceipt } from '@hiero-ledger/sdk';
 
 // ============================================================
 // Per-CID IPFS validation + preview
@@ -27,13 +26,15 @@ interface CIDValidation {
  * invalid + error. Revokes the blob URL on cleanup / next change.
  */
 const useCIDValidation = (cid: string): CIDValidation => {
-  const [state, setState] = useState<CIDValidation>({ status: 'idle' });
+  const [state, setState] = useState<CIDValidation & { cid: string }>({
+    cid: '',
+    status: 'idle',
+  });
   const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     const trimmed = cid.trim();
     if (!trimmed) {
-      setState({ status: 'idle' });
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -42,9 +43,8 @@ const useCIDValidation = (cid: string): CIDValidation => {
     }
 
     let cancelled = false;
-    setState({ status: 'checking' });
-
     const timer = setTimeout(async () => {
+      setState({ cid: trimmed, status: 'checking' });
       try {
         const url = await fetchIPFSBlobUrl(trimmed);
         if (cancelled) {
@@ -54,10 +54,11 @@ const useCIDValidation = (cid: string): CIDValidation => {
         // Replace any previous blob URL
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = url;
-        setState({ status: 'valid', blobUrl: url });
+        setState({ cid: trimmed, status: 'valid', blobUrl: url });
       } catch (err: unknown) {
         if (!cancelled) {
           setState({
+            cid: trimmed,
             status: 'invalid',
             error: err instanceof Error ? err.message : 'Not found on IPFS.',
           });
@@ -81,7 +82,9 @@ const useCIDValidation = (cid: string): CIDValidation => {
     };
   }, []);
 
-  return state;
+  const trimmed = cid.trim();
+  if (!trimmed) return { status: 'idle' };
+  return state.cid === trimmed ? state : { status: 'checking' };
 };
 
 // ============================================================
@@ -223,7 +226,9 @@ const ContractRow: React.FC<{
 // Main form
 // ============================================================
 
-const FacilityCreationForm: React.FC = () => {
+const FacilityCreationForm: React.FC<{ onCreated?: () => void }> = ({
+  onCreated,
+}) => {
   const { signer, isConnected } = useWallet();
 
   // ── basic info ──
@@ -232,11 +237,11 @@ const FacilityCreationForm: React.FC = () => {
   const [sectorType, setSectorType] = useState('');
 
   // ── contract docs ──
-  const emptyDoc = (): DocumentInput => ({
+  const emptyDoc = (uploadedAt = 0): DocumentInput => ({
     cid: '',
     docType: 'contract',
     title: '',
-    uploadedAt: Math.floor(Date.now() / 1000),
+    uploadedAt,
   });
   const [contractDocs, setContractDocs] = useState<DocumentInput[]>([emptyDoc()]);
   const [contractsLocked, setContractsLocked] = useState(false);
@@ -262,7 +267,6 @@ const FacilityCreationForm: React.FC = () => {
   // ── submit state ──
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   // ----------------------------------------------------------
   // Doc handlers
@@ -276,14 +280,16 @@ const FacilityCreationForm: React.FC = () => {
 
   const addDoc = () => {
     if (contractsLocked) return;
-    setContractDocs((prev) => [...prev, emptyDoc()]);
+    const doc = emptyDoc(Math.floor(Date.now() / 1000));
+    setContractDocs((prev) => [...prev, doc]);
   };
 
   const removeDoc = (index: number) => {
     if (contractsLocked) return;
+    const fallbackDoc = emptyDoc();
     setContractDocs((prev) => {
       const next = prev.filter((_, i) => i !== index);
-      return next.length === 0 ? [emptyDoc()] : next;
+      return next.length === 0 ? [fallbackDoc] : next;
     });
   };
 
@@ -295,9 +301,8 @@ const FacilityCreationForm: React.FC = () => {
     [contractDocs]
   );
 
-  // ── Are all filled docs valid on IPFS? ──
   const allFilledValid = useMemo(() => {
-    if (filledDocs.length === 0) return true; // no contracts is fine
+    if (filledDocs.length === 0) return true;
     return filledDocs.every((d) => cidStatuses[d._index] === 'valid');
   }, [filledDocs, cidStatuses]);
 
@@ -365,14 +370,13 @@ const FacilityCreationForm: React.FC = () => {
     }
 
     setSubmitError(null);
-    setSubmitSuccess(null);
     setSubmitting(true);
 
     const contracts: DocumentInput[] = filledDocs.map((d) => ({
       cid: d.cid.trim(),
       docType: d.docType.trim() || 'contract',
       title: d.title.trim() || `Contract`,
-      uploadedAt: d.uploadedAt,
+      uploadedAt: d.uploadedAt || Math.floor(Date.now() / 1000),
     }));
 
     const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -397,7 +401,7 @@ const FacilityCreationForm: React.FC = () => {
     console.log('Facility creation payload:', payload);
 
     try {
-      const receipt = await FactoryWriteContract.createFacility(
+      await FactoryWriteContract.createFacility(
         signer,
         payload.name,
         payload.location,
@@ -406,10 +410,7 @@ const FacilityCreationForm: React.FC = () => {
         payload.initialGateways,
         payload.contracts
       );
-
-      const txId = (receipt as TransactionReceipt)?.transactionId?.toString?.() ?? 'submitted';
-      console.log('createFacility receipt:', receipt);
-      setSubmitSuccess(`Facility creation submitted — ${txId}`);
+      onCreated?.();
     } catch (err: unknown) {
       console.error('createFacility failed:', err);
       setSubmitError(err instanceof Error ? err.message : 'Transaction failed.');
@@ -467,7 +468,8 @@ const FacilityCreationForm: React.FC = () => {
           <div>
             <h2 className="text-sm font-semibold">Facility contracts (IPFS documents)</h2>
             <p className="text-xs text-ink-muted mt-0.5">
-              Each CID is checked against IPFS before submission — a CID that can't be resolved blocks the submit.
+              Each CID is checked against IPFS before submission — a CID that can't be
+              resolved blocks the submit.
             </p>
           </div>
           {!contractsLocked && (
@@ -496,7 +498,6 @@ const FacilityCreationForm: React.FC = () => {
           ))}
         </div>
 
-        {/* Lock / warning gate */}
         {!contractsLocked ? (
           <div className="mt-4 border-t border-border pt-3">
             <div className="flex items-start gap-2 bg-[#fff7e6] border border-[#f0c878] rounded-[5px] px-3 py-2 text-xs text-[#7a5a12]">
@@ -605,9 +606,6 @@ const FacilityCreationForm: React.FC = () => {
         )}
         {submitError && (
           <span className="text-xs text-red-500 font-medium">{submitError}</span>
-        )}
-        {submitSuccess && (
-          <span className="text-xs text-success font-medium">{submitSuccess}</span>
         )}
         <button
           onClick={handleSubmit}

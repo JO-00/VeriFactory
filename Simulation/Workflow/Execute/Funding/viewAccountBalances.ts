@@ -14,7 +14,7 @@ import {
 type Actor = { role: string; privateKey: string };
 
 function getAllActors(): Actor[] {
-  const configPath = path.resolve(__dirname, "../Init/full_config.json");
+  const configPath = path.resolve(__dirname, "../../Init/full_config.json");
   const rawData = fs.readFileSync(configPath, "utf8");
   const data = JSON.parse(rawData);
 

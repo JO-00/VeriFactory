@@ -62,9 +62,14 @@ export interface CandidateVotes{
     votes : bigint |number;
 }
 
-export interface WrappedCandidate{
-  candidate : string;
-  is_compliant : boolean;
+export interface CandidateInfo {
+  wallet: string;
+  name: string;
+}
+
+export interface WrappedCandidate {
+  candidate: CandidateInfo;
+  is_compliant: boolean;
 }
 
 export interface StakedMember{

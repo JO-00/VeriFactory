@@ -362,15 +362,20 @@ export class FactoryContractRead {
     return isFrozen;
   }
 
-  static async latestCommitteeGenerationTimestamp(): Promise<InstanceType<typeof BigNumber>> {
+  static async latestCommitteeGenerationTimestamp(): Promise<bigint> {
     const raw = await callMirrorNode(
       this.getContractId(),
       "latest_committee_generation_timestamp",
       [],
       []
     );
+    
+    if (!raw || raw === "0x") throw new Error("No timestamp returned");
+
     const coder = AbiCoder.defaultAbiCoder();
     const [timestamp] = coder.decode(["uint256"], raw);
-    return new BigNumber(timestamp.toString());
+    
+    // ethers v6 already returns a native bigint for uint256
+    return timestamp; 
   }
 }
