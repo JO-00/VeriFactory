@@ -16,7 +16,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  backend:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,6 +32,20 @@ services:
       DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME}?sslmode=disable
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
+  indexer:
+    image: verifactory-backend:latest
+    container_name: verifactory_indexer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME}?sslmode=disable
+    command: ["/usr/local/bin/indexer"]
 
 volumes:
   postgres_data:

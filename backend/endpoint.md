@@ -1,5 +1,5 @@
-# POST /api/v1/facilities/:addr/reviews: adds a review of a facility to the database
-## Body
+### POST /api/v1/facilities/:addr/reviews: adds a review of a facility to the database
+###### Body
 {
   "user_evm_address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
   "stars": 5,
@@ -8,17 +8,17 @@
   "timestamp": "1794680000"
 }
 
-# PUT /api/v1/facilities/:addr/reviews: changes a review of the facility
+### PUT /api/v1/facilities/:addr/reviews: changes a review of the facility
 
-# DELETE /api/v1/facilities/:addr/reviews: deletes reviews of the facility
+### DELETE /api/v1/facilities/:addr/reviews: deletes reviews of the facility
 
-# GET /api/v1/facilities/:addr/reviews?start=0&page_size=20: gives the list of reviews of the facility
+### GET /api/v1/facilities/:addr/reviews?start=0&page_size=20: gives the list of reviews of the facility
 
-# GET /api/v1/facilities/:addr/reputation: gives the average reputation of the facility
+### GET /api/v1/facilities/:addr/reputation: gives the average reputation of the facility
 
-# POST /api/v1/users: Registers/upserts a user by wallet_address and optional favorite_facilities array
+### POST /api/v1/users: Registers/upserts a user by wallet_address and optional favorite_facilities array
 
-## Body
+###### Body
 {
   "wallet_address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
   "favorite_facilities": [
@@ -27,23 +27,37 @@
   ]
 }
 
-# GET /api/v1/users/:wallet: Returns the user's wallet_address and favorite_facilities
+### GET /api/v1/users/:wallet: Returns the user's wallet_address and favorite_facilities
 
-# PUT /api/v1/users/:wallet/favorites: Replaces the user's favorite_facilities list
+### PUT /api/v1/users/:wallet/favorites: Replaces the user's favorite_facilities list
 
-## Body
+###### Body
 {
   "favorite_facilities": [
     "0x21ebc2d97a649b3f0228a711dc65c9452fa25eb7"
   ]
 }
 
-# POST /api/v1/users/:wallet/favorites: Adds a single facility_address to favorites
+### POST /api/v1/users/:wallet/favorites: Adds a single facility_address to favorites
 
-## Body
+###### Body
 
 {
   "facility_address": "0x21ebc2d97a649b3f0228a711dc65c9452fa25eb7"
 }
 
-# DELETE /api/v1/users/:wallet/favorites/:facilityAddr: Removes a single facility from favorites
+### DELETE /api/v1/users/:wallet/favorites/:facilityAddr: Removes a single facility from favorites
+
+### GET /api/v1/gateway-documents: get all messages in the topic
+
+### GET /api/v1/inspector-reports
+
+Query Parameters (Optional):
+facilityAddress (string) — Filter reports by facility address.
+inspectorAddress (string) — Filter reports by inspector address.
+
+### GET /api/v1/facilities/:facilityAddress/gateways/:gatewayId/documents
+
+Path Parameters (Required):
+facilityAddress (string) — The address of the facility (matched case-insensitively).
+gatewayId (string) — The identifier of the gateway inside that facility.

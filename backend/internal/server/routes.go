@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"veriFactory/backend/internal/modules/read"
 	"veriFactory/backend/internal/modules/reviews"
 	"veriFactory/backend/internal/modules/users"
 )
@@ -51,5 +52,10 @@ func (s *Server) registerRoutes() {
 		usersSvc := users.NewService(usersRepo, s.logger)
 		usersHandler := users.NewHandler(usersSvc, s.logger)
 		usersHandler.RegisterRoutes(api)
+
+		readRepo := read.NewRepository(s.db)
+		readSvc := read.NewService(readRepo)
+		readHandler := read.NewHandler(readSvc, s.logger)
+		readHandler.RegisterRoutes(api)
 	}
 }

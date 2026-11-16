@@ -20,6 +20,35 @@ type VerifactoryFacilityReview struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type VerifactoryGatewayDocument struct {
+	ID                 int64              `json:"id"`
+	TopicID            string             `json:"topic_id"`
+	ConsensusTimestamp string             `json:"consensus_timestamp"`
+	FacilityAddress    string             `json:"facility_address"`
+	GatewayID          string             `json:"gateway_id"`
+	GatewayAddress     string             `json:"gateway_address"`
+	DocumentCid        string             `json:"document_cid"`
+	Signature          string             `json:"signature"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+type VerifactoryHcsTopicCursor struct {
+	TopicID                string             `json:"topic_id"`
+	LastConsensusTimestamp string             `json:"last_consensus_timestamp"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VerifactoryInspectorReport struct {
+	ID                 int64              `json:"id"`
+	TopicID            string             `json:"topic_id"`
+	ConsensusTimestamp string             `json:"consensus_timestamp"`
+	FacilityAddress    string             `json:"facility_address"`
+	InspectorAddress   string             `json:"inspector_address"`
+	ReportCid          string             `json:"report_cid"`
+	Signature          string             `json:"signature"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
 type VerifactoryUser struct {
 	WalletAddress string             `json:"wallet_address"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
