@@ -206,4 +206,26 @@ export class FactoryWriteContract {
     return await this.execute(signer, parameters , gas);
   }
 
+  static async BackFillEventsForDebugging(
+    signer : Signer,
+    gas : number = 1_000_000
+  ) : Promise <TransactionReceipt>{
+    const parameters = this.encodeData("backfillEvents",[]);
+    return await this.execute(signer,parameters,gas);
+  }
+  static async addFacet(
+    signer: Signer,
+    facet: string,
+    selectors: string[],
+    gas: number = 1_500_000
+  ): Promise<TransactionReceipt> {
+    const parameters = this.encodeData("addFacet", [
+      facet,
+      selectors,
+    ]);
+
+    return await this.execute(signer, parameters, gas);
+  }
+
+
 }

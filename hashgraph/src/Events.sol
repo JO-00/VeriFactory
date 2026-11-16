@@ -40,4 +40,11 @@ event CommitteeVotesFrozen(uint256 timestamp);
 
 event DocumentAdded(address indexed facilityAddress, string indexed _cid, string indexed _docType);
 event DocumentRevoked(address indexed facilityAddress, string indexed _cid);
+event ContractSigned(address indexed facilityAddress, string indexed contractCID);
+event DAOMemberAdded(address indexed facilityAddress, address indexed new_member, uint256 stake);
+event DAOMemberRemoved(address indexed facilityAddress, address indexed old_member, uint256 refund);
+event InspectorSign(address indexed inspectorAddress);
+event NewCandidate(address indexed CandidateAddress);
+event QuitCandidateship(address indexed CandidateAddress);
+
 

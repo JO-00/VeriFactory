@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {FacilityRegistry} from "./../Facility/FacilityRegistry.sol";
 import "../data_structs.sol";
-import {FacilityAdded, FacilityDeleted, DocumentAdded, DocumentRevoked} from "./../Events.sol";
+import {FacilityAdded, FacilityDeleted, DocumentAdded, DocumentRevoked, ContractSigned, NewCandidate} from "./../Events.sol";
 import {IInitFactory} from "./../interfaces/IFactory.sol";
 import {FactoryStorage} from "./FactoryStorageBase.sol";
 import {FactoryAuth} from "./FactoryAuth.sol";
@@ -257,6 +257,7 @@ contract InitFactory is FactoryAuth, IInitFactory {
             s: s
         }));
         l.facilities_per_signed_contract[DocumentCID].push(facility_contract);
+        emit ContractSigned(facility_contract, DocumentCID);
     }
 
     function setLogo(string memory image_cid) external onlyOwner{

@@ -35,8 +35,8 @@ const FACILITY_IMPLEMENTATION_ADDRESS = "0x0000000000000000000000000000000000adb
 // Fill with existing Hedera Contract IDs to reuse deployments.
 const EXISTING = {
     factory: "0.0.11394765",
-    committee: "0.0.11394768",
-    init: "0.0.11469426",
+    committee: "0.0.11480983",
+    init: "0.0.11480985",
     visualization: "0.0.11394774"
 };
 
@@ -484,7 +484,8 @@ async function main() {
                 "InspectorSignContract",
                 "change_candidate_documents",
                 "set_committee_member",
-                "remove_committee_member"
+                "remove_committee_member",
+                "backfillEvents"
             ],
             client
         );
@@ -524,7 +525,7 @@ async function main() {
             client
         );
 
-        // 8. Register / Update InitFactory selectors
+        // 8. Register / Update InitFactory selectors (includes backfillEvents)
         await registerFacet(
             "InitFactory",
             factoryId,
@@ -544,7 +545,31 @@ async function main() {
             client
         );
 
-        // 9. Final summary
+        // 9. Execute backfillEvents on Factory
+        console.log("\nExecuting backfillEvents on Factory...");
+        const committeeInterface = new Interface(committeeArtifact.abi);
+        const backfillCalldata = committeeInterface.encodeFunctionData("backfillEvents", []);
+
+        const backfillTx = await new ContractExecuteTransaction()
+            .setContractId(factoryId)
+            .setGas(2_000_000)
+            .setFunctionParameters(
+                Buffer.from(backfillCalldata.slice(2), "hex")
+            )
+            .execute(client);
+
+        const backfillReceipt = await backfillTx.getReceipt(client);
+
+        if (backfillReceipt.status.toString() !== "SUCCESS") {
+            throw new Error(`backfillEvents failed: ${backfillReceipt.status}`);
+        }
+
+        console.log(
+            "backfillEvents executed successfully:",
+            backfillTx.transactionId.toString()
+        );
+
+        // 10. Final summary
         console.log("\n======================================");
         console.log("FACTORY DEPLOYMENT COMPLETE");
         console.log("======================================");

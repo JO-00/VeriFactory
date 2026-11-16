@@ -6,7 +6,7 @@ import {FactoryAuth} from "./FactoryAuth.sol";
 import "../data_structs.sol";
 import {RandomPicker} from "./../utils.sol";
 import {ICommitteeInspector} from "./../interfaces/IFactory.sol";
-import {NewCommittee, CommitteeVotesFrozen} from "./../Events.sol";
+import {NewCommittee, CommitteeVotesFrozen, InspectorSign, DAOMemberRemoved , DAOMemberAdded, NewCandidate, QuitCandidateship, ContractSigned} from "./../Events.sol";
 import {helpers} from "./../helpers.sol";
 
 contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
@@ -137,6 +137,7 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
         l.candidate_addresses[msg.sender] = inspector;
 
         l.candidateIndexPlusOne[msg.sender] = l.candidates.length;
+        emit NewCandidate(msg.sender);
     }
 
     function quit_candidateship() external {
@@ -158,6 +159,7 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
         delete l.candidate_votes[msg.sender];
         delete l.candidate_addresses[msg.sender];
         l.CandidateIsCompliant[msg.sender] = false;
+        emit QuitCandidateship(msg.sender);
     }
 
     function InspectorSignContract(
@@ -186,6 +188,7 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
         // 5. Ensure the recovered address is the sender
         require(signer == msg.sender, "Signature does not match sender");
         l.CandidateIsCompliant[msg.sender] = true;
+        emit InspectorSign(msg.sender);
     }
 
     function change_candidate_documents(string[] memory new_docs) external {
@@ -221,6 +224,7 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
             (bool ok, ) = payable(msg.sender).call{value: excess}("");
             require(ok, "refund failed");
         }
+        emit DAOMemberAdded(facility_contract, new_member, requiredFee);
     }
 
     function remove_committee_member(address member, address facility_contract)
@@ -253,5 +257,33 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
 
         (bool ok, ) = payable(msg.sender).call{value: refund}("");
         require(ok, "refund failed");
+        emit DAOMemberAdded(facility_contract, member, refund);
+    }
+    function backfillEvents() external {
+        FactoryStorage.Layout storage l = FactoryStorage.layout();
+        require(msg.sender == l.owner, "Only owner");
+
+        address[] storage dao = l.DAO;
+        for (uint256 i = 0; i < dao.length; i++) {
+            address member = dao[i];
+            emit DAOMemberAdded(address(0), member, l.memberStake[member]);
+        }
+
+        Inspector[] storage candidateList = l.candidates;
+        for (uint256 i = 0; i < candidateList.length; i++) {
+            address candidateAddr = candidateList[i].wallet;
+            emit NewCandidate(candidateAddr);
+            if (l.CandidateIsCompliant[candidateList[i].wallet]) emit InspectorSign(candidateAddr);
+        }
+
+        address[] storage facilities = l.deployedFacilities;
+        for (uint256 i = 0; i < facilities.length; i++) {
+            address facility = facilities[i];
+            SignedContract[] storage signedList = l.signed_contracts_per_facility[facility];
+            for (uint256 j = 0; j < signedList.length; j++) {
+                // Match field name to your SignedContract struct in data_structs.sol
+                emit ContractSigned(facility, signedList[j].DocumentCID);
+            }
+        }
     }
 }
