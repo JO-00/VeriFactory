@@ -1,0 +1,27 @@
+FROM golang:1.27-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git ca-certificates
+
+COPY go.mod go.sum ./
+RUN go mod download
+RUN GODEBUG=http2client=0 CGO_ENABLED=0 go install github.com/pressly/goose/v3/cmd/goose@latest
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/verifactory-backend ./cmd/api
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /go/bin/goose /usr/local/bin/goose
+COPY --from=builder /bin/verifactory-backend /usr/local/bin/verifactory-backend
+COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "goose -dir ./internal/database/migrations postgres \"$DATABASE_URL\" up && exec /usr/local/bin/verifactory-backend"]
