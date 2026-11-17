@@ -1,5 +1,6 @@
 import type { Inspector , FacilityData, InitialGatewayInput, DocumentInput, UserFacilityRole, Measurement} from "../types";
-import type { GatewayAssignedEvent , GatewayReassignedEvent , KeyRotatedEvent } from "./facillity_dashboard_mocks";
+import type { GatewayAssignedEvent , GatewayReassignedEvent  } from "./facillity_dashboard_mocks";
+import type { KeyRotatedEvent } from "../types";
 
 export interface InspectorPopupProps {
   inspector: Inspector;

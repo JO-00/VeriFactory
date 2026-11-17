@@ -398,7 +398,6 @@ const FacilityCreationForm: React.FC<{ onCreated?: () => void }> = ({
         relayersGatewaysBinaryMatrix: rgConfig.relayersGatewaysBinaryMatrix,
       },
     };
-    console.log('Facility creation payload:', payload);
 
     try {
       await FactoryWriteContract.createFacility(

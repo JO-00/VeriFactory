@@ -51,6 +51,7 @@ async function checkBalancesFromActors(
     let evmAddress: string;
     try {
       const privateKey = PrivateKey.fromStringECDSA(actor.privateKey);
+      console.log(privateKey.toString())
       evmAddress = "0x" + privateKey.publicKey.toEvmAddress();
     } catch (e: any) {
       results.push({

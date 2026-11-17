@@ -11,12 +11,16 @@ import {
   COMMITTEE_SIZE,
 } from '../Functionalities/dao_math';
 import type { FacilityDAOStats } from '../Functionalities/dao_math';
+import { useWallet } from '../Common/WalletProvider'; // Added to check connection
 
 type RowResult =
   | { status: 'loaded'; stats: FacilityDAOStats }
   | { status: 'error'; address: string };
 
 const DAOMembersPanel: React.FC = () => {
+  const { signer } = useWallet();
+  const isGuest = !signer;
+
   const [totalFacilities, setTotalFacilities] = useState<number | null>(null);
   const [initialError, setInitialError] = useState<string | null>(null);
   const [rows, setRows] = useState<RowResult[]>([]);
@@ -147,6 +151,15 @@ const DAOMembersPanel: React.FC = () => {
 
   return (
     <div className="text-ink">
+      
+      {/* Read-Only Banner */}
+      {isGuest && (
+        <div className="mb-4 bg-[#fff8e6] border border-[#f5d78e] text-[#7a5b00] px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#f5d78e]" />
+          You are in read-only mode. To manage DAO members, open a facility dashboard and connect your wallet.
+        </div>
+      )}
+
       {/* Page header */}
       <div className="mb-5 flex items-center justify-between">
         <div>
@@ -361,7 +374,7 @@ const DAOMembersPanel: React.FC = () => {
           </li>
           <li>
             All stakes across all facilities form the <strong>global DAO</strong>: the pool of
-            wallets that secure the network.
+            wallets that secures the network.
           </li>
           <li>
             Every <strong>4 weeks</strong>, {COMMITTEE_SIZE} distinct wallets are drawn at random

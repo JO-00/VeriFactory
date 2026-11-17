@@ -186,20 +186,14 @@ export const SignContractModal: React.FC<SignContractModalProps> = ({
       const messageHex = toHex(messageHash);
       const evmAddress = await resolveEvmAddress(signer.getAccountId().toString());
 
-      console.log('[sign] messageHash:', messageHex);
-      console.log('[sign] evmAddress :', evmAddress);
-
       const flatSig = await personalSign(messageHex, evmAddress);
-      console.log('[sign] wallet signature:', flatSig);
 
       const { v, r, s } = Signature.from(flatSig);
-      console.log('[sign] parsed:', { v, r, s });
 
       setSignature({ v, r, s });
 
       // Fire immediately — same as the working version.
       await onSubmit(v, r, s);
-      console.log('[sign] onSubmit returned');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Signing failed.';
       if (/reject|cancel|denied|user.*(reject|cancel)/i.test(msg)) {

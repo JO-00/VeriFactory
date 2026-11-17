@@ -16,11 +16,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
   api:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    image: verifactory-backend:latest
     container_name: verifactory_backend
     restart: unless-stopped
     depends_on:
@@ -32,8 +32,11 @@ services:
       DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME}?sslmode=disable
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
+
   indexer:
-    image: verifactory-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: verifactory_indexer
     restart: unless-stopped
     depends_on:
@@ -46,6 +49,17 @@ services:
     environment:
       DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME}?sslmode=disable
     command: ["/usr/local/bin/indexer"]
+
+  frontend:
+    build:
+      context: ./vite_frontend   # Change to your actual frontend folder name
+      dockerfile: Dockerfile
+    container_name: verifactory_frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"         # Match your frontend port (e.g., 3000, 5173, or 80)
 
 volumes:
   postgres_data:

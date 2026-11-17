@@ -35,7 +35,6 @@ async function callMirrorNode(
   args: unknown[]
 ): Promise<string> {
   let evmAddress: string;
-  console.log(args)
   if (targetAddress.startsWith("0x")) {
     evmAddress = targetAddress;
   } else {
@@ -44,7 +43,7 @@ async function callMirrorNode(
     evmAddress = rawAddress.startsWith("0x") ? rawAddress : `0x${rawAddress}`;
   }
 
-  console.log(getCallerName());
+  // console.log(getCallerName());
   const signature = "function " + functionName + "(" + inputTypes.join(",") + ")";
   const iface = new Interface([signature]);
   const data = iface.encodeFunctionData(functionName, args);
@@ -182,48 +181,59 @@ export class FacilityContractRead  {
 
   
 
-static async hasAccountRole(
-  facilityAddress: string,
-  role: UserFacilityRole,
-  account: string
-): Promise<boolean> {
-  const raw = await callMirrorNode(
-    facilityAddress,
-    "hasAccountRole",
-    ["bytes32", "address"],
-    [ROLE_HASH[role], account]
-  );
-  const coder = AbiCoder.defaultAbiCoder();
-  const [hasRole] = coder.decode(["bool"], raw);
-  return hasRole;
-}
-static async getUserRole(
-  facilityAddress : string,
-  account : string
-) : Promise<UserFacilityRole>{
-  const raw = await callMirrorNode(
-    facilityAddress,
-    "getUserRole",
-    ["address"],
-    [account]
-  );
-  const coder = AbiCoder.defaultAbiCoder();
-  const [Role] = coder.decode(["uint8"], raw);
-  return Role;
-}
-static async getAdmin(
-  facilityAddress : string
-) : Promise<string>{
-  const raw = await callMirrorNode(
-    facilityAddress,
-    "admin",
-    [],
-    []
-  );
-  const coder = AbiCoder.defaultAbiCoder();
-  const [admin] = coder.decode(["address"], raw);
-  return admin;
-}
+  static async hasAccountRole(
+    facilityAddress: string,
+    role: UserFacilityRole,
+    account: string
+  ): Promise<boolean> {
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "hasAccountRole",
+      ["bytes32", "address"],
+      [ROLE_HASH[role], account]
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [hasRole] = coder.decode(["bool"], raw);
+    return hasRole;
+  }
+  static async getUserRole(
+    facilityAddress : string,
+    account : string
+  ) : Promise<UserFacilityRole>{
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "getUserRole",
+      ["address"],
+      [account]
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [Role] = coder.decode(["uint8"], raw);
+    return Role;
+  }
+  static async getAdmin(
+    facilityAddress : string
+  ) : Promise<string>{
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "admin",
+      [],
+      []
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [admin] = coder.decode(["address"], raw);
+    return admin;
+  }
+  static async getFacilityDocs(facilityAddress : string){
+    const raw = await callMirrorNode(
+      facilityAddress,
+      "getFacilityDocs",
+      ["address"],
+      [facilityAddress]
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [documents] = coder.decode(["Document[]"], raw);
+    return documents;
+  }
 
   
 }

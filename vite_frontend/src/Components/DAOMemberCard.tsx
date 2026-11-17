@@ -53,7 +53,6 @@ export const DAOMembersModal: React.FC<{
   members: StakedMember[];
   onClose: () => void;
 }> = ({ open, members, onClose }) => {
-    console.log(members)
   const [selected, setSelected] = useState<StakedMember | null>(
     members[0] ?? null
   );

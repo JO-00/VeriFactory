@@ -59,6 +59,9 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
 }) => {
   const { signer, accountId, isConnected, personalSignHash } = useWallet();
 
+  // If there is no signer, they are a guest (read-only)
+  const isGuest = !signer;
+
   const isAdmin = role === UserFacilityRole.Admin;
   const isRelayer = role === UserFacilityRole.Relayer || isAdmin;
 
@@ -273,6 +276,15 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
   // ── Ready ──
   return (
     <div className="text-ink max-w-5xl">
+      
+      {/* Read-Only Banner */}
+      {isGuest && (
+        <div className="mb-4 bg-[#fff8e6] border border-[#f5d78e] text-[#7a5b00] px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#f5d78e]" />
+          You are in read-only mode. Connect a wallet to access tools and admin actions.
+        </div>
+      )}
+
       <FacilityHeader facility={facility} role={role} isAdmin={isAdmin} />
 
       <StatusStrip
@@ -301,13 +313,13 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         />
       </div>
 
-      {/* Admin: sign contracts */}
+      {/* Admin: sign contracts (only visible if isAdmin is true, which implies signer exists) */}
       {isAdmin && (
         <SignContractsPanel
           facilityAddress={facilityAddress}
           signer={signer}
           allContracts={allContracts}
-          signedContracts={signedContracts}   // ← SignedContract[]
+          signedContracts={signedContracts}
           onOpenSign={(cid) => setSignModalCid(cid)}
         />
       )}
@@ -412,7 +424,7 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         onClose={() => setDaoModalOpen(false)}
       />
 
-      {signModalCid && (
+      {signModalCid && signer && (
         <SignContractModal
           cid={signModalCid}
           facilityAddress={facilityAddress}
@@ -430,7 +442,7 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
               s
             );
             const fresh = await getFacilitySignedContracts(facilityAddress);
-            setSignedContracts(fresh);        // SignedContract[]
+            setSignedContracts(fresh);
             setSignModalCid(null);
           }}
         />
@@ -444,17 +456,17 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
           onClose={() => setShowURIPreview(false)}
         />
       )}
-      {isAdmin && (
+
+      {isAdmin && signer && (
         <DeleteFacilityDangerZone
-        facilityName={facility.name}
-        facilityAddress={facilityAddress}
-        signer={signer}
-        onDeleted={() => {
-          // Treat deletion like closing the dashboard
-          closeDashboard();
-        }}
-      />)
-          }
+          facilityName={facility.name}
+          facilityAddress={facilityAddress}
+          signer={signer}
+          onDeleted={() => {
+            closeDashboard();
+          }}
+        />
+      )}
     </div>
   );
 };

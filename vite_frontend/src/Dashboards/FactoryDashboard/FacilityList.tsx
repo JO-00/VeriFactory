@@ -15,6 +15,7 @@ import {
   getFacilityDocs,
   getAllContracts,
   FetchAllFacilities,
+  FetchAllFacilityCreationEvents,
   authenticateFacility,
 } from '../../Functionalities/getFacilityInfo';
 import { useWallet } from '../../Common/WalletProvider';
@@ -25,6 +26,7 @@ import {
 import FacilityCreationForm from './FacilityCreationForm';
 import FacilityEntry from './../FacilityDashboard/FacilityEntry';
 import { UserFacilityRole } from '../../types';
+import type { FacilityAddedEvent } from '../../types';
 
 // ── View state ──
 type View =
@@ -40,11 +42,12 @@ type View =
 // Shape held per facility after hydration
 interface HydratedFacility {
   address: string;
-  contracts: string[];          // signed CIDs
+  contracts: { ContractIPFS_CID: string; signed: boolean }[];
   inspector: unknown | null;
   meta: { name: string; sectorType: string; location: string } | null;
   landingURI: string | null;
   docs: string[];
+  creation_event: FacilityAddedEvent | null;
 }
 
 // ── Safe localStorage helpers ──
@@ -93,7 +96,6 @@ const FacilityList: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  // Guard against overlapping reloads (e.g., StrictMode or post-create retry)
   const loadSeqRef = useRef(0);
 
   // ── Reusable progressive load ──
@@ -108,15 +110,38 @@ const FacilityList: React.FC = () => {
     setLoadError(null);
 
     try {
-      const [contracts, allMeta] = await Promise.all([
-        getAllContracts(),
+      const [contracts, allMeta, allEvents] = await Promise.all([
+        getAllContracts().catch((err) => {
+          console.warn('[FacilityList] getAllContracts failed:', err);
+          return [] as string[];
+        }),
         FetchAllFacilities(),
+        FetchAllFacilityCreationEvents().catch((err) => {
+          console.warn('[FacilityList] FetchAllFacilityCreationEvents failed:', err);
+          return [] as FacilityAddedEvent[];
+        }),
       ]);
+
       if (seq !== loadSeqRef.current) return;
 
       setTotalContracts(contracts);
-      const addresses = Object.keys(allMeta);
+      const addresses = Object.keys(allMeta || {});
       setTotalExpected(addresses.length);
+
+      if (addresses.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      const eventsByAddress = (allEvents || []).reduce<Record<string, FacilityAddedEvent>>(
+        (acc, event) => {
+          if (event?.facilityAddress) {
+            acc[event.facilityAddress.toLowerCase()] = event;
+          }
+          return acc;
+        },
+        {}
+      );
 
       const nextList: HydratedFacility[] = [];
 
@@ -126,21 +151,28 @@ const FacilityList: React.FC = () => {
 
         try {
           const [signed, inspector, meta, landingURI, docs] = await Promise.all([
-            getFacilitySignedContracts(address),
+            getFacilitySignedContracts(address).catch(() => []),
             getFacilityInspector(address),
-            getFacilityMeta(address),
-            getFacilityURI(address),
-            getFacilityDocs(address),
+            getFacilityMeta(address).catch(() => allMeta[address] ?? null),
+            getFacilityURI(address).catch(() => null),
+            getFacilityDocs(address).catch(() => []),
           ]);
           if (seq !== loadSeqRef.current) return;
 
+          const signedCids = new Set(signed.map((sc) => sc.DocumentCID));
+          const mappedContracts = contracts.map((cid) => ({
+            ContractIPFS_CID: cid,
+            signed: signedCids.has(cid),
+          }));
+
           const item: HydratedFacility = {
             address,
-            contracts: signed.map((sc) => sc.DocumentCID),
+            contracts: mappedContracts,
             inspector,
-            meta,
+            meta: meta as any,
             landingURI,
             docs: docs as string[],
+            creation_event: eventsByAddress[address.toLowerCase()] ?? null,
           };
 
           nextList.push(item);
@@ -158,7 +190,8 @@ const FacilityList: React.FC = () => {
         setHydrated(nextList);
       }
       setActiveAddress(null);
-    } catch (err) {
+    } catch (err: any) {
+      console.error('CRITICAL ERROR in reloadFacilities:', err);
       if (seq === loadSeqRef.current) {
         setLoadError(
           err instanceof Error ? err.message : 'Failed to load facilities.'
@@ -187,7 +220,21 @@ const FacilityList: React.FC = () => {
       return;
     }
 
+    // No wallet connected: still open the stored facility as an observer.
     if (!isConnected || !signer) {
+      setView({
+        kind: 'dashboard',
+        facilityAddress: storedAddress,
+        role: UserFacilityRole.Observer,
+        result: {
+          facilityAddress: storedAddress,
+          authenticated: false,
+          role: UserFacilityRole.Observer,
+          message: 'Wallet not connected — viewing as observer.',
+        },
+        showModal: false,
+      });
+      setBootstrapping(false);
       return;
     }
 
@@ -208,15 +255,39 @@ const FacilityList: React.FC = () => {
             showModal: false,
           });
         } else {
-          clearStoredFacility();
-          setBootstrapError(result.message ?? 'Could not restore dashboard.');
+          // Authenticated call ran but user has no role → still show as observer.
+          setView({
+            kind: 'dashboard',
+            facilityAddress: storedAddress,
+            role: UserFacilityRole.Observer,
+            result: {
+              facilityAddress: storedAddress,
+              authenticated: false,
+              role: UserFacilityRole.Observer,
+              message: result.message ?? 'Viewing as observer.',
+            },
+            showModal: false,
+          });
+          setBootstrapError(result.message ?? 'Viewing as observer.');
         }
       } catch (err) {
         if (cancelled) return;
-        clearStoredFacility();
-        setBootstrapError(
-          err instanceof Error ? err.message : 'Could not restore dashboard.'
-        );
+        // Auth threw (network / RPC / wallet prompt) → don't hang, show observer.
+        const message =
+          err instanceof Error ? err.message : 'Could not restore dashboard.';
+        setView({
+          kind: 'dashboard',
+          facilityAddress: storedAddress,
+          role: UserFacilityRole.Observer,
+          result: {
+            facilityAddress: storedAddress,
+            authenticated: false,
+            role: UserFacilityRole.Observer,
+            message,
+          },
+          showModal: false,
+        });
+        setBootstrapError(message);
       } finally {
         if (!cancelled) setBootstrapping(false);
       }
@@ -229,11 +300,23 @@ const FacilityList: React.FC = () => {
 
   // ── Authenticate → dispatch to dashboard by role ──
   const handleAuthenticate = useCallback(
-    async (facilityAddress: string) => {
-      setSubmitError(null);
+  async (facilityAddress: string) => {
+    setSubmitError(null);
 
+      // No wallet: enter the facility as an observer instead of blocking.
       if (!isConnected || !signer) {
-        setSubmitError('Connect your wallet first.');
+        setView({
+          kind: 'dashboard',
+          facilityAddress,
+          role: UserFacilityRole.Observer,
+          result: {
+            facilityAddress,
+            authenticated: false,
+            role: UserFacilityRole.Observer,
+            message: 'Wallet not connected — viewing as observer.',
+          },
+          showModal: false,
+        });
         return;
       }
 
@@ -251,7 +334,20 @@ const FacilityList: React.FC = () => {
             showModal: true,
           });
         } else {
-          setSubmitError(result.message ?? 'Authentication failed.');
+          // Auth ran but user has no role → still let them view as observer.
+          setView({
+            kind: 'dashboard',
+            facilityAddress,
+            role: UserFacilityRole.Observer,
+            result: {
+              facilityAddress,
+              authenticated: false,
+              role: UserFacilityRole.Observer,
+              message: result.message ?? 'Viewing as observer.',
+            },
+            showModal: false,
+          });
+          setSubmitError(result.message ?? 'Viewing as observer.');
         }
       } catch (err) {
         setSubmitError(
@@ -280,7 +376,7 @@ const FacilityList: React.FC = () => {
 
   const totalFacilities = hydrated.length;
   const fullySigned = hydrated.filter(
-    (h) => h.contracts.length > 0 && h.contracts.length === totalContracts.length
+    (h) => h.contracts.length > 0 && h.contracts.every((c) => c.signed)
   ).length;
 
   const goBackToList = useCallback(() => {
@@ -293,10 +389,8 @@ const FacilityList: React.FC = () => {
   const handleFacilityCreated = useCallback(async () => {
     setShowForm(false);
 
-    // First refresh — streams entries immediately
     await reloadFacilities(false);
 
-    // Mirror node indexing can lag a couple seconds; silent background sync
     setTimeout(() => {
       reloadFacilities(true);
     }, 3000);
@@ -463,6 +557,7 @@ const FacilityList: React.FC = () => {
             <FacilityEntry
               key={h.address}
               facility={h}
+              creation_event={h.creation_event}
               meta={h.meta}
               landingURI={h.landingURI}
               docs={h.docs}

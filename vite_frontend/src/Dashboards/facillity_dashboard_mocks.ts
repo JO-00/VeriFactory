@@ -1,9 +1,10 @@
 // ============== facillity_dashboard_mocks.ts ==============
-import { EventReader } from "../HashGraphUtils/Events";
+import { FacilityEvents } from "../HashGraphUtils/Events/facility";
+import { FactoryEvents } from "../HashGraphUtils/Events/factory";
 import { FacilityContractRead } from "../HashGraphUtils/Contracts/Facility/FacilityRead";
 import { FacilityContractWrite } from "../HashGraphUtils/Contracts/Facility/FacilityWrite";
-import type { Measurement , CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember, SignedContract} from "../types";
-import { Signer } from "@hiero-ledger/sdk";
+import type {  CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember, SignedContract} from "../types";
+import { Signer, Status } from "@hiero-ledger/sdk";
 import { FactoryContractRead } from "../HashGraphUtils/Contracts/Factory/FactoryRead";
 import { FactoryWriteContract } from "../HashGraphUtils/Contracts/Factory/FactoryWrite";
 
@@ -50,89 +51,7 @@ const RELAYERS: string[] = [
 // Relationships
 // ============================================================
 
-// gateway → relayers managing it
-const RELAYERS_PER_GATEWAY: Record<string, string[]> = {
-  [GATEWAYS[0]]: [RELAYERS[0], RELAYERS[1]],
-  [GATEWAYS[1]]: [RELAYERS[1]],
-  [GATEWAYS[2]]: [RELAYERS[0], RELAYERS[2]],
-  [GATEWAYS[3]]: [RELAYERS[2]],
-};
 
-// relayer → gateways it manages
-const GATEWAYS_PER_RELAYER: Record<string, string[]> = {
-  [RELAYERS[0]]: [GATEWAYS[0], GATEWAYS[2]],
-  [RELAYERS[1]]: [GATEWAYS[0], GATEWAYS[1]],
-  [RELAYERS[2]]: [GATEWAYS[2], GATEWAYS[3]],
-};
-
-// ============================================================
-// Relayer registration
-// ============================================================
-
-const RELAYER_REGISTERED_AT: Record<string, number> = {
-  [RELAYERS[0]]: Date.UTC(2026, 0, 15) / 1000, // 15 Jan 2026
-  [RELAYERS[1]]: Date.UTC(2026, 3, 2) / 1000,  // 2 Apr 2026
-  [RELAYERS[2]]: Date.UTC(2026, 6, 20) / 1000, // 20 Jul 2026
-};
-
-// ============================================================
-// Gateway cadence
-// ============================================================
-
-const GATEWAY_CADENCE: Record<string, CadencePolicy> = {
-  [GATEWAYS[0]]: { expectedInterval: 3600, gracePeriod: 300 },
-  [GATEWAYS[1]]: { expectedInterval: 7200, gracePeriod: 600 },
-  [GATEWAYS[2]]: { expectedInterval: 1800, gracePeriod: 120 },
-  [GATEWAYS[3]]: { expectedInterval: 86400, gracePeriod: 3600 },
-};
-
-// ============================================================
-// Measurements
-// ============================================================
-
-const MEASUREMENTS_PER_GATEWAY: Record<string, Measurement[]> = {
-  [GATEWAYS[0]]: [
-    {
-      documentCid: 'bafkreiAm1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      verified: true,
-    },
-    {
-      documentCid: 'bafkreiAm2xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      verified: true,
-    },
-  ],
-  [GATEWAYS[1]]: [
-    {
-      documentCid: 'bafkreiAm3xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig3cccccccccccccccccccccccccccccccccccccc',
-      verified: false,
-    },
-  ],
-  [GATEWAYS[2]]: [
-    {
-      documentCid: 'bafkreiAm4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig4dddddddddddddddddddddddddddddddddddddd',
-      verified: true,
-    },
-    {
-      documentCid: 'bafkreiAm5xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig5eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-      verified: true,
-    },
-    {
-      documentCid: 'bafkreiAm6xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signature: '0xSig6ffffffffffffffffffffffffffffffffffffff',
-      verified: false,
-    },
-  ],
-  [GATEWAYS[3]]: [],
-};
-
-// ============================================================
-// Events
-// ============================================================
 
 const GATEWAY_ASSIGNED_EVENTS: GatewayAssignedEvent[] = [
   { gatewayId: GATEWAYS[0], relayerAddress: RELAYERS[0] },
@@ -171,7 +90,7 @@ export const getGatewayReassignedEvents = async (
     : [...GATEWAY_REASSIGNED_EVENTS];
 
 export const getKeyRotatedEvents = async (facilityAddress: string, gatewayId : string): Promise<KeyRotatedEvent[]> =>
-  await EventReader.getKeyRotatedEventsByGateway({facilityAddress, gatewayId})
+  await FacilityEvents.getKeyRotatedEventsByGateway({facilityAddress, gatewayId})
 
 
 // ============================================================
@@ -203,8 +122,6 @@ export const formatTimestamp = (ts: number): string => {
   });
 };
 
-// ── Ban / unban gateway ──
-const BANNED_GATEWAYS = new Set<string>();
 
 // In facillity_dashboard_mocks.ts:
 export const getAllGateways = async (facility_address: string): Promise<string[]> => {
@@ -223,12 +140,25 @@ export const getGatewaysForRelayer = async (facility_address: string, relayer: s
 };
 export const getGatewayStatus = async (facility_address: string , gateway_id : string): Promise<CadencePolicy> =>
   await FacilityContractRead.getGatewayPolicy(facility_address , gateway_id);
-export const getAllMeasurements = async (facilityAddress: string, gatewayId : string): Promise<Measurement[]> =>
-  MEASUREMENTS_PER_GATEWAY[gatewayId] ?? [];
+export const getAllMeasurements = async (
+  facilityAddress: string,
+  gatewayAddress: string,
+): Promise<string[]> => {
+  // Map lookup, not index access. Case-insensitive fallback in case the
+  // caller passes a lowercase/non-checksummed address.
+  const direct = MEASUREMENTS_PER_GATEWAY.get(gatewayAddress);
+  if (direct) return direct;
+
+  const lower = gatewayAddress.toLowerCase();
+  for (const [key, cids] of MEASUREMENTS_PER_GATEWAY) {
+    if (key.toLowerCase() === lower) return cids;
+  }
+  return [];
+};
 export const getRelayerRegisteredAt = async (facilityAddress : string , relayerAddress: string): Promise<RelayerRegisteredEvent | null> =>
-  await EventReader.getRelayerRegistrationEvent({facilityAddress , relayerAddress});
+  await FacilityEvents.getRelayerRegistrationEvent({facilityAddress , relayerAddress});
 export const getFacilityAddedEvent = async (facility_address : string): Promise<FacilityAddedEvent|undefined> => {
-  for (const event of await EventReader.getFacilityAddedEvents()){
+  for (const event of await FactoryEvents.getFacilityAddedEvents()){
     if (event.facilityAddress == facility_address) return event;
   }
    
@@ -265,4 +195,9 @@ export const getFacilitySignedContracts = async (
   facilityAddress: string
 ): Promise<SignedContract[]> => {
   return await FactoryContractRead.getFacilitySignedContracts(facilityAddress);
+};
+
+export const FreezeVotes = async (signer: Signer): Promise<boolean> => {
+  const receipt = await FactoryWriteContract.attemptFreezeVotes(signer);
+  return receipt?.status === Status.Success;
 };

@@ -1,3 +1,4 @@
+// file: DeployUnfreezeFacet.ts
 import * as fs from "fs";
 import * as path from "path";
 
@@ -37,7 +38,9 @@ const EXISTING = {
     factory: "0.0.11394765",
     committee: "0.0.11480983",
     init: "0.0.11480985",
-    visualization: "0.0.11394774"
+    visualization: "0.0.11394774",
+    // ADD YOUR NEW FACET HERE IF YOU WANT TO REUSE IT IN THE FUTURE
+    unfreezeFacet: "0.0.11486208" 
 };
 
 const MAX_TRANSACTION_FEE_HBAR = 20;
@@ -234,8 +237,6 @@ async function registerFacet(
 
     const selectorsToRegister: string[] = [];
 
-    // Check whether each selector already points to this exact facet address.
-    // Any missing selector OR selector pointing to an older facet address is queued for addFacet().
     for (const selector of selectors) {
         const calldata = factoryInterface.encodeFunctionData(
             "facets",
@@ -294,7 +295,6 @@ async function registerFacet(
         `${name}: ${selectorsToRegister.length} selectors need registration/update`
     );
 
-    // Encode addFacet(address,bytes4[]) — overwrites existing mappings in Factory.facets
     const encodedFunction = factoryInterface.encodeFunctionData(
         "addFacet",
         [facetAddress, selectorsToRegister]
@@ -326,7 +326,6 @@ async function registerFacet(
 
     console.log(`${name}: registration transaction successful`);
 
-    // Verify every selector after registration.
     for (const selector of selectors) {
         const calldata = factoryInterface.encodeFunctionData(
             "facets",
@@ -365,235 +364,87 @@ async function registerFacet(
 async function main() {
     // 1. Load artifacts
     const factoryArtifact = findArtifact(["Factory"]);
-    const committeeArtifact = findArtifact(["CommitteeInspector"]);
-    const initArtifact = findArtifact(["InitFactory"]);
-
-    const visualizationArtifact = findArtifact([
-        "VisualizationFacet",
-        "Visualization"
-    ]);
+    
+    // We only need the Factory artifact to get the `addFacet` ABI, 
+    // and the new UnfreezeFacet artifact to get its selector.
+    const unfreezeFacetArtifact = findArtifact(["UnfreezeFacet"]);
 
     // 2. Connect to Hedera Testnet
     const operatorId = process.env.OPERATOR_ID;
     const privateKey = process.env.OPERATOR_KEY;
 
-    if (!operatorId) {
-        throw new Error("OPERATOR_ID missing from .env");
-    }
-
-    if (!privateKey) {
-        throw new Error("OPERATOR_KEY missing from .env");
-    }
-
-    if (
-        !EXISTING.factory &&
-        !FACILITY_IMPLEMENTATION_ADDRESS
-    ) {
-        throw new Error(
-            "FACILITY_IMPLEMENTATION_ADDRESS must be filled manually."
-        );
-    }
+    if (!operatorId) throw new Error("OPERATOR_ID missing from .env");
+    if (!privateKey) throw new Error("OPERATOR_KEY missing from .env");
 
     const client = Client.forTestnet();
     const operatorKey = PrivateKey.fromStringECDSA(privateKey);
 
-    client.setOperator(
-        AccountId.fromString(operatorId),
-        operatorKey
-    );
-
-    client.setDefaultMaxTransactionFee(
-        new Hbar(MAX_TRANSACTION_FEE_HBAR)
-    );
+    client.setOperator(AccountId.fromString(operatorId), operatorKey);
+    client.setDefaultMaxTransactionFee(new Hbar(MAX_TRANSACTION_FEE_HBAR));
 
     console.log("\nOperator:", operatorId);
-    console.log(
-        "Default maximum transaction fee:",
-        MAX_TRANSACTION_FEE_HBAR,
-        "HBAR"
-    );
+    console.log("Default maximum transaction fee:", MAX_TRANSACTION_FEE_HBAR, "HBAR");
 
     try {
-        // 3. Build Factory deployment data if deploying fresh
-        let factoryDeploymentData = "";
-
+        // 3. Deploy or reuse Factory (We MUST reuse it, not deploy a new one)
         if (!EXISTING.factory) {
-            const constructorParams =
-                FacilityParamsBuilder.buildConstructorParams(
-                    FACILITY_IMPLEMENTATION_ADDRESS,
-                    []
-                );
-
-            const factoryBytecode =
-                factoryArtifact.bytecode.object.startsWith("0x")
-                    ? factoryArtifact.bytecode.object.slice(2)
-                    : factoryArtifact.bytecode.object;
-
-            factoryDeploymentData =
-                factoryBytecode +
-                Buffer.from(constructorParams).toString("hex");
+            throw new Error("EXISTING.factory must be set. Do not deploy a fresh factory to patch!");
         }
+        
+        const factoryId = getContractId(EXISTING.factory);
+        await verifyContractExists(factoryId, client);
+        console.log(`\nReusing Factory: ${factoryId.toString()} (${factoryId.toEvmAddress()})`);
 
-        // 4. Deploy or reuse Factory
-        const factoryId = await getOrDeploy(
-            "Factory",
-            EXISTING.factory,
-            factoryDeploymentData,
-            client,
-            FACTORY_GAS
-        );
-
-        // 5. Deploy or reuse facet implementations
-        const committeeId = await getOrDeploy(
-            "CommitteeInspector",
-            EXISTING.committee,
-            committeeArtifact.bytecode.object,
+        // 4. Deploy or reuse UnfreezeFacet
+        const unfreezeId = await getOrDeploy(
+            "UnfreezeFacet",
+            EXISTING.unfreezeFacet,
+            unfreezeFacetArtifact.bytecode.object,
             client,
             FACET_GAS
         );
 
-        const initId = await getOrDeploy(
-            "InitFactory",
-            EXISTING.init,
-            initArtifact.bytecode.object,
-            client,
-            FACET_GAS
-        );
-
-        const visualizationId = await getOrDeploy(
-            "Visualization",
-            EXISTING.visualization,
-            visualizationArtifact.bytecode.object,
-            client,
-            FACET_GAS
-        );
-
-        // 6. Register CommitteeInspector selectors
+        // 5. Register UnfreezeFacet selector
         await registerFacet(
-            "CommitteeInspector",
+            "UnfreezeFacet",
             factoryId,
-            committeeId,
-            committeeArtifact,
+            unfreezeId,
+            unfreezeFacetArtifact,
             factoryArtifact,
             [
-                "generate_new_committee",
-                "rank_candidates",
-                "getCurrentInspectors",
-                "become_candidate",
-                "quit_candidateship",
-                "InspectorSignContract",
-                "change_candidate_documents",
-                "set_committee_member",
-                "remove_committee_member",
-                "backfillEvents"
+                "unfreeze_votes", // <--- The function name from your Solidity
+                "assign_inspectors_if_frozen"
             ],
             client
         );
 
-        // 7. Register Visualization selectors
-        await registerFacet(
-            "Visualization",
-            factoryId,
-            visualizationId,
-            visualizationArtifact,
-            factoryArtifact,
-            [
-                "getFactoryDocs",
-                "getDeployedFacilities",
-                "getFacilityCount",
-                "getFactoryLegalContracts",
-                "getInspectorLegalContract",
-                "getFacilityGlobalInfo",
-                "getFacilityDocs",
-                "getFacilitySignedContracts",
-                "getFacilitiesFromSignedContract",
-                "getFacilityCommitteeMembers",
-                "getCurrentCommittee",
-                "get_top_6_votes",
-                "get_number_of_voters",
-                "getFacilityInspector",
-                "getInspectorFacilities",
-                "getDAO",
-                "getCandidates",
-                "getFacilityExistenceStatus",
-                "view_staked_members",
-                "memberStake",
-                "CandidateIsCompliant",
-                "votes_frozen",
-                "latest_committee_generation_timestamp"
-            ],
-            client
-        );
+        // 6. Final summary
+        console.log("\n======================================");
+        console.log("FACET PATCH COMPLETE");
+        console.log("======================================");
+        console.log("Factory:", factoryId.toString(), factoryId.toEvmAddress());
+        console.log("UnfreezeFacet:", unfreezeId.toString(), unfreezeId.toEvmAddress());
+        console.log("======================================");
 
-        // 8. Register / Update InitFactory selectors (includes backfillEvents)
-        await registerFacet(
-            "InitFactory",
-            factoryId,
-            initId,
-            initArtifact,
-            factoryArtifact,
-            [
-                "createFacility",
-                "removeFacilityFromPlatform",
-                "updateFacilityMeta",
-                "addFacilityDocument",
-                "replaceFacilityDocument",
-                "SignTangibleContract",
-                "setLogo",
-                "setPlatformDocs"
-            ],
-            client
-        );
+        console.log("\nExecuting assign_inspectors_if_frozen...");
+        const iface = new Interface(unfreezeFacetArtifact.abi);
+        const calldata = iface.encodeFunctionData("assign_inspectors_if_frozen", []);
 
-        // 9. Execute backfillEvents on Factory
-        console.log("\nExecuting backfillEvents on Factory...");
-        const committeeInterface = new Interface(committeeArtifact.abi);
-        const backfillCalldata = committeeInterface.encodeFunctionData("backfillEvents", []);
-
-        const backfillTx = await new ContractExecuteTransaction()
+        const tx = await new ContractExecuteTransaction()
             .setContractId(factoryId)
-            .setGas(2_000_000)
-            .setFunctionParameters(
-                Buffer.from(backfillCalldata.slice(2), "hex")
-            )
+            .setGas(1_000_000)
+            .setFunctionParameters(Buffer.from(calldata.slice(2), "hex"))
             .execute(client);
 
-        const backfillReceipt = await backfillTx.getReceipt(client);
-
-        if (backfillReceipt.status.toString() !== "SUCCESS") {
-            throw new Error(`backfillEvents failed: ${backfillReceipt.status}`);
+        const receipt = await tx.getReceipt(client);
+        
+        if (receipt.status.toString() !== "SUCCESS") {
+            throw new Error(`unfreeze_votes failed: ${receipt.status}`);
         }
+        
+        console.log("assign_inspectors_if_frozen executed successfully:", tx.transactionId.toString());
+        
 
-        console.log(
-            "backfillEvents executed successfully:",
-            backfillTx.transactionId.toString()
-        );
-
-        // 10. Final summary
-        console.log("\n======================================");
-        console.log("FACTORY DEPLOYMENT COMPLETE");
-        console.log("======================================");
-        console.log(
-            "Factory:",
-            factoryId.toString(),
-            factoryId.toEvmAddress()
-        );
-        console.log(
-            "CommitteeInspector:",
-            committeeId.toString(),
-            committeeId.toEvmAddress()
-        );
-        console.log(
-            "InitFactory:",
-            initId.toString(),
-            initId.toEvmAddress()
-        );
-        console.log(
-            "Visualization:",
-            visualizationId.toString(),
-            visualizationId.toEvmAddress()
-        );
-        console.log("======================================");
     } finally {
         client.close();
     }

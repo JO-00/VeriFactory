@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from 'react';
 import {
   DAppConnector,
   HederaJsonRpcMethod,
@@ -17,13 +23,19 @@ import {
   toUtf8Bytes,
 } from 'ethers';
 
-const WALLETCONNECT_PROJECT_ID: string | undefined = import.meta.env.VITE_PROJECT_ID;
+const WALLETCONNECT_PROJECT_ID: string | undefined =
+  import.meta.env.VITE_PROJECT_ID;
+
+const origin =
+  typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://verifactory.vercel.app';
 
 const metadata = {
-  name: 'React Topic App',
-  description: 'Hedera Consensus Service Demo',
-  url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
-  icons: ['https://www.hashpack.app/img/logo.png'],
+  name: 'Verifactory',
+  description: 'Hedera Consensus Service Verification Demo',
+  url: origin,
+  icons: [`${origin}/icon.svg`], // Use /icon.png if you placed a PNG in public/
 };
 
 const dAppConnector = new DAppConnector(
@@ -34,7 +46,9 @@ const dAppConnector = new DAppConnector(
   [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
   [HederaChainId.Testnet]
 );
+
 let initPromise: Promise<void> | null = null;
+
 function getInitializedConnector() {
   if (!initPromise) {
     if (!WALLETCONNECT_PROJECT_ID) {
@@ -48,7 +62,6 @@ function getInitializedConnector() {
   return initPromise;
 }
 
-
 interface WalletContextValue {
   signer: Signer | null;
   accountId: string;
@@ -56,7 +69,10 @@ interface WalletContextValue {
   isConnected: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
-  personalSignHash: (messageHashHex: string) => Promise<string>;
+  personalSignHash: (
+    messageHashHex: string,
+    expectedEvmAddress?: string
+  ) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -97,40 +113,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const connect = async () => {
     try {
       await getInitializedConnector();
-      const client = dAppConnector.walletConnectClient;
-      if (!client) throw new Error('WalletConnect client not initialized');
-
-      const { uri, approval } = await client.connect({
-        requiredNamespaces: {
-          hedera: {
-            methods: Object.values(HederaJsonRpcMethod),
-            chains: [HederaChainId.Testnet],
-            events: [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
-          },
-        },
-        optionalNamespaces: {
-          eip155: {
-            methods: ['personal_sign', 'eth_sendTransaction'],
-            chains: ['eip155:296'],
-            events: ['accountsChanged', 'chainChanged'],
-          },
-        },
-      });
-
-      if (uri) {
-        await dAppConnector.walletConnectModal.openModal({ uri });
-      }
-
-      const session = await approval();
-      dAppConnector.walletConnectModal.closeModal();
-
-      // Let DAppConnector register the new session's Hedera signer
-      await (dAppConnector as unknown as { onSessionConnected: (s: unknown) => Promise<void> })
-        .onSessionConnected?.(session);
-
+      await dAppConnector.openModal();
       await syncSignerState();
     } catch (error) {
-      dAppConnector.walletConnectModal.closeModal();
       console.error('Connection failed:', error);
     }
   };
@@ -146,7 +131,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   };
 
-const personalSignHash = async (
+  const personalSignHash = async (
     messageHashHex: string,
     expectedEvmAddress?: string
   ): Promise<string> => {
@@ -156,13 +141,11 @@ const personalSignHash = async (
 
     await getInitializedConnector();
 
-    // 1. Send hedera_signMessage via DAppConnector
     const result = await dAppConnector.signMessage({
       signerAccountId: `hedera:testnet:${accountId}`,
       message: messageHashHex,
     });
 
-    // 2. Decode the base64 Hedera SignatureMap returned by HashPack
     const sigMapBase64 =
       typeof result === 'string' ? result : (result as any).signatureMap;
 
@@ -179,8 +162,6 @@ const personalSignHash = async (
       );
     }
 
-    // 3. Hedera SignatureMap returns 64 bytes (r || s) without v.
-    //    Determine v (27 or 28) by matching against the signer's EVM address.
     const r = hexlify(raw64.slice(0, 32));
     const s = hexlify(raw64.slice(32, 64));
 
@@ -202,9 +183,11 @@ const personalSignHash = async (
       }
     }
 
-    // Fallback if HashPack signed the 32 raw bytes instead of the 66-char hex string
     const rawDigest = keccak256(
-      concat([toUtf8Bytes('\x19Hedera Signed Message:\n32'), getBytes(messageHashHex)])
+      concat([
+        toUtf8Bytes('\x19Hedera Signed Message:\n32'),
+        getBytes(messageHashHex),
+      ])
     );
     for (const v of [27, 28]) {
       const candidate = recoverAddress(rawDigest, { v, r, s });
@@ -213,7 +196,9 @@ const personalSignHash = async (
       }
     }
 
-    throw new Error('Could not recover matching EVM address from HashPack signature.');
+    throw new Error(
+      'Could not recover matching EVM address from HashPack signature.'
+    );
   };
 
   return (

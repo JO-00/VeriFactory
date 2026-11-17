@@ -2,7 +2,14 @@ import { FACTORY_CONTRACT_ADDRESS } from "./../../configs";
 import { ContractId } from "@hiero-ledger/sdk";
 import { BigNumber } from "bignumber.js";
 import { AbiCoder, JsonRpcProvider, Interface } from "ethers";
-import type { FacilityMeta , DocumentInput , CandidateVotes , WrappedCandidate , StakedMember, SignedContract } from "../../../types";
+import type {
+  FacilityMeta,
+  DocumentInput,
+  CandidateVotes,
+  WrappedCandidate,
+  StakedMember,
+  SignedContract,
+} from "../../../types";
 
 const HEDERA_RPC_URL = "https://testnet.hashio.io/api";
 
@@ -15,9 +22,9 @@ function getProvider(): JsonRpcProvider {
   return provider;
 }
 
-interface Inspector{
-    wallet : string
-    AttachedDocumentsCIDs : string[];
+interface Inspector {
+  wallet: string;
+  AttachedDocumentsCIDs: string[];
 }
 
 async function callMirrorNode(
@@ -58,7 +65,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [docs] = coder.decode(["string[]"], raw);
-    return docs;
+    return Array.from(docs);
   }
 
   static async getDeployedFacilities(): Promise<string[]> {
@@ -70,7 +77,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [facilities] = coder.decode(["address[]"], raw);
-    return facilities;
+    return Array.from(facilities);
   }
 
   static async getFacilityCount(): Promise<InstanceType<typeof BigNumber>> {
@@ -97,7 +104,12 @@ export class FactoryContractRead {
       ["tuple(string cid, string docType, string title, uint256 uploadedAt)[]"],
       raw
     );
-    return contracts;
+    return Array.from(contracts).map((c: any) => ({
+      cid: c.cid,
+      docType: c.docType,
+      title: c.title,
+      uploadedAt: c.uploadedAt,
+    }));
   }
 
   static async getInspectorLegalContract(): Promise<DocumentInput> {
@@ -112,7 +124,10 @@ export class FactoryContractRead {
       ["tuple(string title, string doc_cid)"],
       raw
     );
-    return contractDoc;
+    return {
+      title: contractDoc.title,
+      doc_cid: contractDoc.doc_cid,
+    } as unknown as DocumentInput;
   }
 
   static async getFacilityGlobalInfo(facilityAddress: string): Promise<FacilityMeta> {
@@ -125,14 +140,22 @@ export class FactoryContractRead {
     const coder = AbiCoder.defaultAbiCoder();
     const [info] = coder.decode(
       [
-        "tuple(address facilityAddress, string name, string location, string sectorType  , uint256 createdAt , bool isActive , string[] docCids)",
+        "tuple(address facilityAddress, string name, string location, string sectorType, uint256 createdAt, bool isActive, string[] docCids)",
       ],
       raw
     );
-    return info;
+    return {
+      facilityAddress: info.facilityAddress,
+      name: info.name,
+      location: info.location,
+      sectorType: info.sectorType,
+      createdAt: info.createdAt,
+      isActive: info.isActive,
+      docCids: Array.from(info.docCids),
+    } as FacilityMeta;
   }
 
-  static async getFacilityDocs(facilityAddress: string): Promise<DocumentInput[]> {
+  static async getFacilityDocs(facilityAddress: string): Promise<string[]> {
     const raw = await callMirrorNode(
       this.getContractId(),
       "getFacilityDocs",
@@ -144,7 +167,7 @@ export class FactoryContractRead {
       ["tuple(string title, string doc_cid)[]"],
       raw
     );
-    return docs;
+    return Array.from(docs).map((c: any) => String(c.doc_cid));
   }
 
   static async getFacilitySignedContracts(
@@ -161,7 +184,12 @@ export class FactoryContractRead {
       ["tuple(string DocumentCID, uint8 v, bytes32 r, bytes32 s)[]"],
       raw
     );
-    return contracts;
+    return Array.from(contracts).map((c: any) => ({
+      DocumentCID: c.DocumentCID,
+      v: Number(c.v),
+      r: c.r,
+      s: c.s,
+    }));
   }
 
   static async getFacilitiesFromSignedContract(
@@ -175,7 +203,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [facilities] = coder.decode(["address[]"], raw);
-    return facilities;
+    return Array.from(facilities);
   }
 
   static async getFacilityCommitteeMembers(
@@ -189,7 +217,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [members] = coder.decode(["address[]"], raw);
-    return members;
+    return Array.from(members);
   }
 
   static async getCurrentCommittee(): Promise<string[]> {
@@ -201,22 +229,19 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [committee] = coder.decode(["address[]"], raw);
-    return committee;
+    return Array.from(committee);
   }
 
   static async getTop6Votes(): Promise<CandidateVotes[]> {
-    const raw = await callMirrorNode(
-      this.getContractId(),
-      "get_top_6_votes",
-      [],
-      []
-    );
+    const raw = await callMirrorNode(this.getContractId(), "get_top_6_votes", [], []);
     const coder = AbiCoder.defaultAbiCoder();
-    const [votes] = coder.decode(
-      ["tuple(address candidate, uint256 votes)[]"],
-      raw
-    );
-    return votes;
+
+    const [votesArray] = coder.decode(["tuple(address wallet, uint256 votes)[]"], raw);
+
+    return Array.from(votesArray).map((v: any) => ({
+      wallet: v.wallet,
+      votes: v.votes,
+    }));
   }
 
   static async getNumberOfVoters(): Promise<InstanceType<typeof BigNumber>> {
@@ -259,7 +284,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [facilities] = coder.decode(["address[]"], raw);
-    return facilities;
+    return Array.from(facilities);
   }
 
   static async getDAO(): Promise<string[]> {
@@ -271,7 +296,7 @@ export class FactoryContractRead {
     );
     const coder = AbiCoder.defaultAbiCoder();
     const [daoMembers] = coder.decode(["address[]"], raw);
-    return daoMembers;
+    return Array.from(daoMembers);
   }
 
   static async getCandidates(): Promise<WrappedCandidate[]> {
@@ -288,7 +313,17 @@ export class FactoryContractRead {
       ],
       raw
     );
-    return candidates;
+    return Array.from(candidates).map((c: any) => ({
+      candidate: {
+        wallet: c.candidate.wallet,
+        name: c.candidate.name,
+      },
+      is_compliant: c.is_compliant,
+    }));
+  }
+
+  static async getCompliantCandidates(): Promise<WrappedCandidate[]> {
+    return (await this.getCandidates()).filter((c) => c.is_compliant === true);
   }
 
   static async getFacilityExistenceStatus(
@@ -306,25 +341,25 @@ export class FactoryContractRead {
   }
 
   static async viewStakedMembers(
-      facilityAddress: string
-    ): Promise<StakedMember[]> {
-      const raw = await callMirrorNode(
-        this.getContractId(),
-        "view_staked_members",
-        ["address"],
-        [facilityAddress]
-      );
-      const coder = AbiCoder.defaultAbiCoder();
-      const [stakedMembers] = coder.decode(
-        ["tuple(address wallet, uint256 amount)[]"],
-        raw
-      );
+    facilityAddress: string
+  ): Promise<StakedMember[]> {
+    const raw = await callMirrorNode(
+      this.getContractId(),
+      "view_staked_members",
+      ["address"],
+      [facilityAddress]
+    );
+    const coder = AbiCoder.defaultAbiCoder();
+    const [stakedMembers] = coder.decode(
+      ["tuple(address wallet, uint256 amount)[]"],
+      raw
+    );
 
-      return stakedMembers.toArray().map((m: { wallet: string; amount: bigint }) => ({
-        wallet: m.wallet,
-        amount: m.amount,
-      }));
-    }
+    return Array.from(stakedMembers).map((m: any) => ({
+      wallet: m.wallet,
+      amount: m.amount,
+    }));
+  }
 
   static async memberStake(who: string): Promise<InstanceType<typeof BigNumber>> {
     const raw = await callMirrorNode(
@@ -369,13 +404,12 @@ export class FactoryContractRead {
       [],
       []
     );
-    
+
     if (!raw || raw === "0x") throw new Error("No timestamp returned");
 
     const coder = AbiCoder.defaultAbiCoder();
     const [timestamp] = coder.decode(["uint256"], raw);
-    
-    // ethers v6 already returns a native bigint for uint256
-    return timestamp; 
+
+    return timestamp;
   }
 }

@@ -83,7 +83,6 @@ export function useFacilityToolHandlers({
     if (!signer) return setToolError('Connect your wallet first');
     try {
       await FacilityContractWrite.rotateKey(signer, facilityAddress, gatewayId, newKey);
-      console.log('[rotate_key]', { facilityAddress, gatewayId, newKey });
       setToolSuccess(`Key rotated for ${shortAddr(gatewayId)}`);
       closeModal();
     } catch (err: unknown) {
@@ -110,7 +109,6 @@ export function useFacilityToolHandlers({
     if (!gatewayId || !cid.trim()) return setToolError('Gateway and document CID are required.');
     try {
       // TODO: await FactoryWriteContract.publishMeasurement(signer, facilityAddress, gatewayId, cid);
-      console.log('[publish_measurement]', { facilityAddress, gatewayId, cid });
       setToolSuccess(`Measurement published for ${shortAddr(gatewayId)}.`);
     } catch (err: unknown) {
       setToolError(getErrorMessage(err, 'Publish failed.'));
@@ -149,7 +147,6 @@ export function useFacilityToolHandlers({
     if (!signer) return setToolError('Need to connect to wallet');
     try {
       await FacilityContractWrite.banGateway(signer, facilityAddress, gatewayId);
-      console.log('[ban_gateway]', { facilityAddress, gatewayId });
       setToolSuccess(`Gateway ${shortAddr(gatewayId)} banned.`);
       closeModal();
     } catch (err: unknown) {
@@ -163,7 +160,6 @@ export function useFacilityToolHandlers({
     if (!signer) return setToolError('Connect to wallet first');
     try {
       await FacilityContractWrite.banGateway(signer, facilityAddress, gatewayId);
-      console.log('[admin_ban_gateway]', { facilityAddress, gatewayId });
       setToolSuccess(`Gateway ${shortAddr(gatewayId)} banned.`);
       closeModal();
     } catch (err: unknown) {
@@ -206,7 +202,6 @@ export function useFacilityToolHandlers({
       await FacilityContractWrite.assignGatewayToRelayer(
          signer, facilityAddress, gatewayId, gatewayKey, relayer 
       );
-      console.log('[assign_gateway]', { facilityAddress, gatewayId, gatewayKey, relayer });
       setToolSuccess(`Gateway ${gatewayId} assigned to ${shortAddr(relayer)}.`);
       closeModal();
     } catch (err: unknown) {
@@ -252,7 +247,6 @@ export function useFacilityToolHandlers({
     try {
       if (!emergency) await FacilityContractWrite.enableEmergencyOverride(signer, facilityAddress);
       else return setToolError('Emergency already Activated');
-      console.log('[toggle_emergency]', { facilityAddress });
       setToolSuccess('Emergency toggled.');
     } catch (err: unknown) {
       setToolError(getErrorMessage(err, 'Toggle failed.'));

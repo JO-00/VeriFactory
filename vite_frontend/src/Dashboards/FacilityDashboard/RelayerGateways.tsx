@@ -1,6 +1,6 @@
 // ============== RelayerGateways.tsx ==============
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   getGatewaysForRelayer,
   getGatewayStatus,
@@ -13,6 +13,7 @@ import {
   formatCadence,
   formatTimestamp,
 } from './../facillity_dashboard_mocks';
+import { MeasurementViewer } from './../../Components/MeasurementViewer';
 import type {
   GatewayAssignedEvent,
   GatewayReassignedEvent,
@@ -24,7 +25,7 @@ import {
   StatCard,
   SectionHeader,
   EmptyHint,
-  EventList
+  EventList,
 } from './DashboardUtils';
 import type {
   EntityModalProps,
@@ -33,6 +34,9 @@ import type {
 } from '../dashboard_types';
 import BigNumber from 'bignumber.js';
 import { FacilityContractRead } from '../../HashGraphUtils/Contracts/Facility/FacilityRead';
+
+// ── IPFS gateway for measurement JSON ──
+const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
 
 // ============================================================
 // Gateway body
@@ -64,7 +68,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const [p, m, a, ra, k] = await Promise.all([
+        const [p, cids, a, ra, k] = await Promise.all([
           getGatewayStatus(facilityAddress, gateway),
           getAllMeasurements(facilityAddress, gateway),
           getGatewayAssignedEvents(facilityAddress, gateway),
@@ -73,7 +77,13 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
         ]);
         if (cancelled) return;
         setPolicy(p);
-        setMeasurements(m);
+        setMeasurements(
+          cids.map((cid) => ({
+            documentCid: cid,
+            signature: '',
+            verified: false,
+          }))
+        );
         setAssigned(a);
         setReassigned(ra);
         setRotations(k);
@@ -91,30 +101,23 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
     };
   }, [facilityAddress, gateway]);
 
+  const historicalKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const rot of rotations) {
+      if (rot.oldKey) keys.add(rot.oldKey);
+      if (rot.newKey) keys.add(rot.newKey);
+    }
+    return Array.from(keys);
+  }, [rotations]);
+
   // ── Measurement detail page ──
   if (page.kind === 'measurement-detail') {
     return (
-      <div className="space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FieldBlock label="Document CID" value={page.measurement.documentCid} mono />
-          <FieldBlock label="Signature" value={page.measurement.signature} mono />
-        </div>
-
-        <div>
-          <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted mb-1.5">
-            Verification
-          </div>
-          <StatusPill
-            ok={page.measurement.verified}
-            okText="Verified"
-            badText="Invalid signature"
-          />
-        </div>
-
-        <div className="text-xs text-ink-faint italic pt-3 border-t border-border">
-          Measurement analysis coming in a future version.
-        </div>
-      </div>
+      <MeasurementViewer
+        cid={page.measurement.documentCid}
+        gatewayKey={gateway && gateway !== '…' ? gateway : null}
+        historicalKeys={historicalKeys}
+      />
     );
   }
 
@@ -142,8 +145,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
         </div>
       </section>
 
-      
-
       {/* Measurements */}
       <section>
         <SectionHeader icon="📡" title="Measurements" count={measurements.length} />
@@ -161,7 +162,9 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
                   <span className="font-mono text-[0.72rem] break-all text-ink group-hover:text-accent">
                     {shortAddr(m.documentCid, 12, 8)}
                   </span>
-                  <StatusPill ok={m.verified} okText="OK" badText="BAD SIG" compact />
+                  <span className="text-[0.68rem] font-mono text-ink-muted group-hover:text-accent">
+                    view ↗
+                  </span>
                 </div>
               </button>
             ))}
@@ -181,7 +184,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
                 key={`${rot.transactionHash}-${rot.logIndex}`}
                 className="bg-surface-muted border border-border rounded-[5px] px-3 py-2.5 space-y-2"
               >
-                {/* Top row: Anomaly status + Contract timestamp */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <StatusPill
                     ok={!rot.isAnomalous}
@@ -194,7 +196,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
                   </span>
                 </div>
 
-                {/* Key transition: oldKey -> newKey */}
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[0.75rem]">
                   <span
                     title={rot.oldKey}
@@ -211,7 +212,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
                   </span>
                 </div>
 
-                {/* Mirror Node links + Consensus timestamp */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/60 text-[0.7rem] font-mono">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <a
@@ -315,8 +315,6 @@ const RelayerBody: React.FC<RelayerBodyProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Registered at */}
-      {/* Registration */}
       <section>
         <SectionHeader icon="📅" title="Registration" />
         {!registeredAt ? (
@@ -370,7 +368,6 @@ const RelayerBody: React.FC<RelayerBodyProps> = ({
         )}
       </section>
 
-      {/* Manages gateways */}
       <section>
         <SectionHeader icon="🌐" title="Manages gateways" count={gateways.length} />
         {gateways.length === 0 ? (
@@ -408,45 +405,43 @@ export const EntityModal: React.FC<EntityModalProps> = ({
 }) => {
   const title = selected.kind === 'gateway' ? 'Gateway' : 'Relayer';
 
-  // Resolved gateway key (only used when kind === 'gateway')
   const [gatewayKey, setGatewayKey] = useState<string | null>(null);
   const [gatewayError, setGatewayError] = useState<Error | null>(null);
 
-  // The gateway id is just the original address (per your pseudocode)
   const gatewayId = selected.kind === 'gateway' ? selected.address : null;
 
   useEffect(() => {
-  if (selected.kind !== 'gateway') {
-    return; // Don't call setState synchronously, just exit
-  }
-
-  let cancelled = false;
-
-  (async () => {
-    setGatewayKey(null);
-    setGatewayError(null);
-
-    try {
-      const key = await FacilityContractRead.getGatewayKey(
-        facilityAddress,
-        selected.address,
-      );
-      if (cancelled) return;
-      setGatewayKey(key);
-    } catch (err) {
-      if (cancelled) return;
-      setGatewayError(err instanceof Error ? err : new Error(String(err)));
+    if (selected.kind !== 'gateway') {
+      return;
     }
-  })();
 
-  return () => {
-    cancelled = true;
-  };
-}, [selected.kind, selected.address, facilityAddress]);
-  // What to show in the header as the "address"
+    let cancelled = false;
+
+    (async () => {
+      setGatewayKey(null);
+      setGatewayError(null);
+
+      try {
+        const key = await FacilityContractRead.getGatewayKey(
+          facilityAddress,
+          selected.address,
+        );
+        if (cancelled) return;
+        setGatewayKey(key);
+      } catch (err) {
+        if (cancelled) return;
+        setGatewayError(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.kind, selected.address, facilityAddress]);
+
   const displayAddress =
     selected.kind === 'gateway'
-      ? gatewayKey ?? '…'                       // loading placeholder
+      ? gatewayKey ?? '…'
       : selected.address;
 
   return (
@@ -458,7 +453,6 @@ export const EntityModal: React.FC<EntityModalProps> = ({
         className="bg-surface border border-border rounded-md w-[80vw] max-w-3xl max-h-[85vh] flex flex-col overflow-hidden text-ink"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-surface-muted">
           <div className="min-w-0">
             <div className="text-[0.7rem] text-ink-muted uppercase tracking-wide">
@@ -501,12 +495,14 @@ export const EntityModal: React.FC<EntityModalProps> = ({
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-auto px-4 py-4">
-          {selected.kind === 'gateway' && (
+          {selected.kind === 'gateway' && !gatewayKey && !gatewayError && (
+            <div className="text-sm text-ink-muted">Resolving gateway key…</div>
+          )}
+          {selected.kind === 'gateway' && gatewayKey && (
             <GatewayBody
               facilityAddress={facilityAddress}
-              gateway={displayAddress}
+              gateway={gatewayKey}
               page={page}
               setPage={setPage}
               onNavigate={onNavigate}

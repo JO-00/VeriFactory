@@ -45,11 +45,9 @@ export class FacilityContractWrite {
 
       // Wallet signs and executes the already-frozen transaction
       const response = await transaction.executeWithSigner(signer);
-      console.log("Transaction ID:", response.transactionId.toString());
 
       // Poll receipt via SDK client
       const receipt = await response.getReceipt(testnetClient);
-      console.log("Transaction status:", receipt.status.toString());
 
       return receipt;
     } catch (error: any) {
