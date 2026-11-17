@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"golang.org/x/crypto/sha3"
 )
 
 // BuildCanonicalReviewMessage constructs the exact payload signed by the user's EVM wallet.
@@ -30,7 +30,18 @@ func BuildCanonicalDeleteMessage(facilityAddr string, timestamp string) string {
 	)
 }
 
-// VerifyEVMSignature verifies an EIP-191 personal_sign signature against expectedSigner.
+// hederaTextHash mirrors the "\x19Hedera Signed Message:\n<len>" envelope
+// used by @hashgraph/hedera-wallet-connect / HashPack personal_sign,
+// and by WalletProvider.personalSignHash on the frontend.
+func hederaTextHash(msg []byte) []byte {
+	prefix := fmt.Sprintf("\x19Hedera Signed Message:\n%d", len(msg))
+	h := sha3.NewLegacyKeccak256()
+	h.Write([]byte(prefix))
+	h.Write(msg)
+	return h.Sum(nil)
+}
+
+// VerifyEVMSignature verifies a Hedera-wrapped personal_sign signature against expectedSigner.
 func VerifyEVMSignature(expectedSigner, message, sigHex string) error {
 	if !common.IsHexAddress(expectedSigner) {
 		return fmt.Errorf("invalid EVM address: %s", expectedSigner)
@@ -52,7 +63,7 @@ func VerifyEVMSignature(expectedSigner, message, sigHex string) error {
 		return fmt.Errorf("invalid recovery id: %d", sig[64])
 	}
 
-	digest := accounts.TextHash([]byte(message))
+	digest := hederaTextHash([]byte(message))
 	pubKey, err := crypto.SigToPub(digest, sig)
 	if err != nil {
 		return fmt.Errorf("signature recovery failed: %w", err)

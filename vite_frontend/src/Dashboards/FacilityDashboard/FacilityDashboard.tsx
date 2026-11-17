@@ -18,6 +18,7 @@ import { FactoryWriteContract } from '../../HashGraphUtils/Contracts/Factory/Fac
 import { UserFacilityRole } from './../../types';
 import type { ModalPage } from './../dashboard_types';
 import { useWallet } from './../../Common/WalletProvider';
+import { ReputationPanel } from './../ReputationPanel';
 import { EntityModal } from './RelayerGateways';
 import { resolveEvmAddress, getAllContracts } from '../../Functionalities/getFacilityInfo';
 import { SignContractsPanel } from './SignContractsPanel';
@@ -301,6 +302,10 @@ export const FacilityDashboard: React.FC<FacilityDashboardProps> = ({
         onSelectGateways={() => scrollTo(gatewaysRef)}
         onSelectRelayers={() => scrollTo(relayersRef)}
         onSelectBanned={() => scrollTo(relayersRef)}
+      />
+      <ReputationPanel
+        facilityAddress={facilityAddress}
+        canReview={!isGuest}
       />
 
       {/* DAO members — clickable card, visible to everyone */}
