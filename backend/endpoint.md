@@ -56,8 +56,8 @@ Query Parameters (Optional):
 facilityAddress (string) — Filter reports by facility address.
 inspectorAddress (string) — Filter reports by inspector address.
 
-### GET /api/v1/facilities/:facilityAddress/gateways/:gatewayId/documents
+### GET /api/v1/facilities/:facilityAddress/gateways/:gatewayAddr/documents
 
 Path Parameters (Required):
 facilityAddress (string) — The address of the facility (matched case-insensitively).
-gatewayId (string) — The identifier of the gateway inside that facility.
+gatewayAddr (string) — The address of the gateway inside that facility.

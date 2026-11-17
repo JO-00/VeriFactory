@@ -84,17 +84,17 @@ const listGatewayDocumentsByFacilityAndGateway = `-- name: ListGatewayDocumentsB
 SELECT id, topic_id, consensus_timestamp, facility_address, gateway_id, gateway_address, document_cid, signature, created_at
 FROM verifactory.gateway_documents
 WHERE facility_address = LOWER($1)
-  AND gateway_id = $2
+  AND gateway_address = LOWER($2)
 ORDER BY consensus_timestamp DESC
 `
 
 type ListGatewayDocumentsByFacilityAndGatewayParams struct {
-	Lower     string `json:"lower"`
-	GatewayID string `json:"gateway_id"`
+	Lower   string `json:"lower"`
+	Lower_2 string `json:"lower_2"`
 }
 
 func (q *Queries) ListGatewayDocumentsByFacilityAndGateway(ctx context.Context, arg ListGatewayDocumentsByFacilityAndGatewayParams) ([]VerifactoryGatewayDocument, error) {
-	rows, err := q.db.Query(ctx, listGatewayDocumentsByFacilityAndGateway, arg.Lower, arg.GatewayID)
+	rows, err := q.db.Query(ctx, listGatewayDocumentsByFacilityAndGateway, arg.Lower, arg.Lower_2)
 	if err != nil {
 		return nil, err
 	}

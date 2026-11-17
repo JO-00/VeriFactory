@@ -16,10 +16,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: db.New(pool)}
 }
 
-func (r *Repository) ListGatewayDocuments(ctx context.Context, facilityAddr, gatewayID string) ([]db.VerifactoryGatewayDocument, error) {
+func (r *Repository) ListGatewayDocuments(ctx context.Context, facilityAddr, GatewayAddress string) ([]db.VerifactoryGatewayDocument, error) {
 	return r.q.ListGatewayDocumentsByFacilityAndGateway(ctx, db.ListGatewayDocumentsByFacilityAndGatewayParams{
-		Lower:     facilityAddr,
-		GatewayID: gatewayID,
+		Lower:   facilityAddr,
+		Lower_2: GatewayAddress,
 	})
 }
 

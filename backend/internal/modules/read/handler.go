@@ -18,17 +18,15 @@ func NewHandler(svc *Service, logger *slog.Logger) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	// (facilityAddress, gatewayId) -> message[]
-	rg.GET("/facilities/:addr/gateways/:gatewayId/documents", h.getGatewayDocuments)
+	rg.GET("/facilities/:addr/gateways/:gatewayaddr/documents", h.getGatewayDocuments)
 
-	// ?inspectorAddress=0x... | ?facilityAddress=0x... | ?facilityAddress=0x...&inspectorAddress=0x... -> message[]
 	rg.GET("/inspector-reports", h.getInspectorReports)
 
 	rg.GET("/gateway-documents", h.getAllGatewayDocuments)
 }
 
 func (h *Handler) getGatewayDocuments(c *gin.Context) {
-	items, err := h.svc.ListGatewayDocuments(c.Request.Context(), c.Param("addr"), c.Param("gatewayId"))
+	items, err := h.svc.ListGatewayDocuments(c.Request.Context(), c.Param("addr"), c.Param("gatewayaddr"))
 	if err != nil {
 		h.logger.Error("failed to list gateway documents", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_server_error"})

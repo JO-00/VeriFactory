@@ -24,6 +24,7 @@ COPY --from=builder /usr/local/bin/api /usr/local/bin/api
 COPY --from=builder /usr/local/bin/indexer /usr/local/bin/indexer
 COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
 
-EXPOSE 8080
+ARG SERVER_PORT
+EXPOSE ${SERVER_PORT}
 
 CMD ["sh", "-c", "goose -dir ./internal/database/migrations postgres \"$DATABASE_URL\" up && exec /usr/local/bin/api"]

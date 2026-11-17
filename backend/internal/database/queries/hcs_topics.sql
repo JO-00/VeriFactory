@@ -2,7 +2,7 @@
 SELECT *
 FROM verifactory.gateway_documents
 WHERE facility_address = LOWER($1)
-  AND gateway_id = $2
+  AND gateway_address = LOWER($2)
 ORDER BY consensus_timestamp DESC;
 
 -- name: ListInspectorReportsByInspector :many

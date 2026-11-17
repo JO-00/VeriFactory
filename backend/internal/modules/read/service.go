@@ -36,8 +36,8 @@ type InspectorReportMessage struct {
 	CreatedAt          time.Time `json:"createdAt"`
 }
 
-func (s *Service) ListGatewayDocuments(ctx context.Context, facilityAddr, gatewayID string) ([]GatewayDocumentMessage, error) {
-	rows, err := s.repo.ListGatewayDocuments(ctx, facilityAddr, gatewayID)
+func (s *Service) ListGatewayDocuments(ctx context.Context, facilityAddr, GatewayAddress string) ([]GatewayDocumentMessage, error) {
+	rows, err := s.repo.ListGatewayDocuments(ctx, facilityAddr, GatewayAddress)
 	if err != nil {
 		return nil, err
 	}
