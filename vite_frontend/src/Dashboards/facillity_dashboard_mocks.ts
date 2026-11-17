@@ -140,20 +140,40 @@ export const getGatewaysForRelayer = async (facility_address: string, relayer: s
 };
 export const getGatewayStatus = async (facility_address: string , gateway_id : string): Promise<CadencePolicy> =>
   await FacilityContractRead.getGatewayPolicy(facility_address , gateway_id);
+export interface GatewayDocumentAttestation {
+  id: number;
+  consensusTimestamp: string;
+  facilityAddress: string;
+  gatewayId: string;
+  gatewayAddress: string;
+  documentCID: string;
+  signature: string;
+  createdAt: string;
+}
+
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8082';
+
 export const getAllMeasurements = async (
   facilityAddress: string,
   gatewayAddress: string,
-): Promise<string[]> => {
-  // Map lookup, not index access. Case-insensitive fallback in case the
-  // caller passes a lowercase/non-checksummed address.
-  const direct = MEASUREMENTS_PER_GATEWAY.get(gatewayAddress);
-  if (direct) return direct;
+): Promise<GatewayDocumentAttestation[]> => {
+  const res = await fetch(
+    `${BACKEND_URL}/api/v1/facilities/${facilityAddress}/gateways/${gatewayAddress}/documents`,
+  );
+  console.log(res)
 
-  const lower = gatewayAddress.toLowerCase();
-  for (const [key, cids] of MEASUREMENTS_PER_GATEWAY) {
-    if (key.toLowerCase() === lower) return cids;
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch gateway documents: ${res.status} ${res.statusText}`,
+    );
   }
-  return [];
+
+  const data = (await res.json()) as {
+    messages?: GatewayDocumentAttestation[];
+  };
+
+  return Array.isArray(data.messages) ? data.messages : [];
 };
 export const getRelayerRegisteredAt = async (facilityAddress : string , relayerAddress: string): Promise<RelayerRegisteredEvent | null> =>
   await FacilityEvents.getRelayerRegistrationEvent({facilityAddress , relayerAddress});

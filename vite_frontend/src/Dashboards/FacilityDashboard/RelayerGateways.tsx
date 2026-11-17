@@ -17,10 +17,10 @@ import { MeasurementViewer } from './../../Components/MeasurementViewer';
 import type {
   GatewayAssignedEvent,
   GatewayReassignedEvent,
+  GatewayDocumentAttestation,
 } from './../facillity_dashboard_mocks';
-import type { Measurement, CadencePolicy, RelayerRegisteredEvent, KeyRotatedEvent } from './../../types';
+import type { CadencePolicy, RelayerRegisteredEvent, KeyRotatedEvent } from './../../types';
 import {
-  FieldBlock,
   StatusPill,
   StatCard,
   SectionHeader,
@@ -34,9 +34,6 @@ import type {
 } from '../dashboard_types';
 import BigNumber from 'bignumber.js';
 import { FacilityContractRead } from '../../HashGraphUtils/Contracts/Facility/FacilityRead';
-
-// ── IPFS gateway for measurement JSON ──
-const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
 
 // ============================================================
 // Gateway body
@@ -56,7 +53,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
     expectedInterval: BigNumber(0),
     gracePeriod: BigNumber(0),
   });
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [measurements, setMeasurements] = useState<GatewayDocumentAttestation[]>([]);
   const [assigned, setAssigned] = useState<GatewayAssignedEvent[]>([]);
   const [reassigned, setReassigned] = useState<GatewayReassignedEvent[]>([]);
   const [rotations, setRotations] = useState<KeyRotatedEvent[]>([]);
@@ -68,7 +65,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const [p, cids, a, ra, k] = await Promise.all([
+        const [p, docs, a, ra, k] = await Promise.all([
           getGatewayStatus(facilityAddress, gateway),
           getAllMeasurements(facilityAddress, gateway),
           getGatewayAssignedEvents(facilityAddress, gateway),
@@ -77,13 +74,7 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
         ]);
         if (cancelled) return;
         setPolicy(p);
-        setMeasurements(
-          cids.map((cid) => ({
-            documentCid: cid,
-            signature: '',
-            verified: false,
-          }))
-        );
+        setMeasurements(docs);
         setAssigned(a);
         setReassigned(ra);
         setRotations(k);
@@ -112,9 +103,23 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
 
   // ── Measurement detail page ──
   if (page.kind === 'measurement-detail') {
+    const attestation: GatewayDocumentAttestation =
+      'documentCID' in page.measurement
+        ? (page.measurement as unknown as GatewayDocumentAttestation)
+        : measurements.find((m) => m.documentCID === page.measurement.documentCid) ?? {
+            id: 0,
+            consensusTimestamp: '',
+            facilityAddress,
+            gatewayId: '',
+            gatewayAddress: gateway,
+            documentCID: page.measurement.documentCid,
+            signature: page.measurement.signature ?? '',
+            createdAt: '',
+          };
+
     return (
       <MeasurementViewer
-        cid={page.measurement.documentCid}
+        attestation={attestation}
         gatewayKey={gateway && gateway !== '…' ? gateway : null}
         historicalKeys={historicalKeys}
       />
@@ -154,13 +159,22 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
           <div className="space-y-1.5">
             {measurements.map((m) => (
               <button
-                key={m.documentCid}
-                onClick={() => setPage({ kind: 'measurement-detail', measurement: m })}
+                key={`${m.documentCID}-${m.consensusTimestamp}`}
+                onClick={() =>
+                  setPage({
+                    kind: 'measurement-detail',
+                    measurement: {
+                      ...m,
+                      documentCid: m.documentCID,
+                      verified: false,
+                    },
+                  })
+                }
                 className="w-full text-left bg-surface-muted border border-border rounded-[5px] px-3 py-2.5 hover:border-accent hover:bg-accent-soft transition-colors cursor-pointer group"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-mono text-[0.72rem] break-all text-ink group-hover:text-accent">
-                    {shortAddr(m.documentCid, 12, 8)}
+                    {shortAddr(m.documentCID, 12, 8)}
                   </span>
                   <span className="text-[0.68rem] font-mono text-ink-muted group-hover:text-accent">
                     view ↗

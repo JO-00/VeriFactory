@@ -59,7 +59,7 @@ services:
     depends_on:
       - api
     ports:
-      - "3000:3000"         # Match your frontend port (e.g., 3000, 5173, or 80)
+      - "5173:5173"         # Match your frontend port (e.g., 3000, 5173, or 80)
 
 volumes:
   postgres_data:

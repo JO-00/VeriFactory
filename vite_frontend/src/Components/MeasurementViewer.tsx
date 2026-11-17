@@ -1,12 +1,13 @@
 // ============== MeasurementViewer.tsx ==============
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { sha256, toUtf8Bytes, recoverAddress, hashMessage } from 'ethers';
+import { solidityPackedKeccak256, getBytes, verifyMessage } from 'ethers';
 import { FieldBlock } from './../Dashboards/FacilityDashboard/DashboardUtils';
+import type { GatewayDocumentAttestation } from './../Dashboards/facillity_dashboard_mocks';
 
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
 
-// ── Raw IPFS document shape (per the Python signer) ──
+// ── Raw IPFS document shape ──
 interface RawMeasurementDoc {
   variables: Record<string, number | number[]>;
   Unit: Record<string, string>;
@@ -14,46 +15,60 @@ interface RawMeasurementDoc {
   signature?: string;
 }
 
-// ── Canonical JSON exactly as the Python signer produces it ──
-const canonicalize = (obj: unknown): string => {
-  // sort_keys=True, separators=(",", ":"), ensure_ascii=False
-  const sortValue = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(sortValue);
-    if (v && typeof v === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(v as Record<string, unknown>).sort()) {
-        out[k] = sortValue((v as Record<string, unknown>)[k]);
-      }
-      return out;
-    }
-    return v;
-  };
-  return JSON.stringify(sortValue(obj));
-};
-
-// ── Verify: sha256(canonical_json_without_signature), signed as "sha256:<hex>" ──
-const verifySignature = (
-  doc: RawMeasurementDoc,
+// ── Verify attestation signature over solidityPackedKeccak256([facilityAddress, gatewayId, gatewayAddress, documentCID]) ──
+const verifyAttestationSignature = (
+  attestation: GatewayDocumentAttestation,
   expectedKey: string | null,
-): { status: 'valid' | 'invalid' | 'unknown'; recovered?: string; error?: string } => {
-  if (!doc.signature) {
-    return { status: 'invalid', error: 'No signature in document.' };
+  historicalKeys: string[] = [],
+): {
+  status: 'valid' | 'invalid' | 'unknown';
+  isHistorical?: boolean;
+  recovered?: string;
+  error?: string;
+} => {
+  if (!attestation.signature) {
+    return { status: 'invalid', error: 'No signature in attestation.' };
   }
 
   try {
-    const { signature, ...rest } = doc;
-    const canonical = canonicalize(rest);
-    const digestHex = sha256(toUtf8Bytes(canonical)); // 0x + 64 hex
-    const digestNo0x = digestHex.replace(/^0x/, '');
-    const message = `sha256:${digestNo0x}`;
-    const recovered = recoverAddress(hashMessage(message), `0x${signature.replace(/^0x/, '')}`);
+    const digest = solidityPackedKeccak256(
+      ['address', 'string', 'address', 'string'],
+      [
+        attestation.facilityAddress,
+        attestation.gatewayId,
+        attestation.gatewayAddress,
+        attestation.documentCID,
+      ],
+    );
 
-    if (!expectedKey) {
+    const sig = attestation.signature.startsWith('0x')
+      ? attestation.signature
+      : `0x${attestation.signature}`;
+
+    const recovered = verifyMessage(getBytes(digest), sig);
+    const recoveredLower = recovered.toLowerCase();
+
+    if (recoveredLower !== attestation.gatewayAddress.toLowerCase()) {
+      return {
+        status: 'invalid',
+        recovered,
+        error: `Recovered ${recovered} does not match attestation gatewayAddress ${attestation.gatewayAddress}.`,
+      };
+    }
+
+    if (expectedKey && recoveredLower === expectedKey.toLowerCase()) {
+      return { status: 'valid', isHistorical: false, recovered };
+    }
+
+    if (historicalKeys.some((k) => k.toLowerCase() === recoveredLower)) {
+      return { status: 'valid', isHistorical: true, recovered };
+    }
+
+    if (!expectedKey && historicalKeys.length === 0) {
       return { status: 'unknown', recovered };
     }
 
-    const ok = recovered.toLowerCase() === expectedKey.toLowerCase();
-    return { status: ok ? 'valid' : 'invalid', recovered };
+    return { status: 'invalid', recovered };
   } catch (err) {
     return {
       status: 'invalid',
@@ -151,18 +166,27 @@ const VariableCard: React.FC<{
 
 // ── The viewer ──
 export interface MeasurementViewerProps {
-  cid: string;
+  attestation: GatewayDocumentAttestation;
   /** Resolved gateway public key (EVM address) for signature verification. */
   gatewayKey?: string | null;
+  /** Prior EVM addresses from KeyRotated events for this gateway. */
+  historicalKeys?: string[];
 }
 
 export const MeasurementViewer: React.FC<MeasurementViewerProps> = ({
-  cid,
+  attestation,
   gatewayKey,
+  historicalKeys,
 }) => {
+  const cid = attestation.documentCID;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [doc, setDoc] = useState<RawMeasurementDoc | null>(null);
+
+  const verification = useMemo(
+    () => verifyAttestationSignature(attestation, gatewayKey ?? null, historicalKeys ?? []),
+    [attestation, gatewayKey, historicalKeys],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -194,11 +218,6 @@ export const MeasurementViewer: React.FC<MeasurementViewerProps> = ({
     };
   }, [cid]);
 
-  const verification = useMemo(() => {
-    if (!doc) return null;
-    return verifySignature(doc, gatewayKey ?? null);
-  }, [doc, gatewayKey]);
-
   return (
     <div className="space-y-4">
       <FieldBlock label="Document CID" value={cid} mono />
@@ -215,6 +234,39 @@ export const MeasurementViewer: React.FC<MeasurementViewerProps> = ({
         </a>
       </div>
 
+      {/* Verification */}
+      <div>
+        <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted mb-1.5">
+          Signature
+        </div>
+        {verification.status === 'valid' && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-[#b7e0c1] bg-[#eefaf1] text-[#1f6b36] text-[0.72rem] font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#1f6b36]" />
+            {verification.isHistorical ? 'Verified (historical key)' : 'Verified'}
+          </span>
+        )}
+        {verification.status === 'invalid' && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-[#f2a3a3] bg-[#fdecec] text-[#a12626] text-[0.72rem] font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#a12626]" />
+            Invalid signature
+          </span>
+        )}
+        {verification.status === 'unknown' && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-border-strong bg-surface-muted text-ink-muted text-[0.72rem] font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-ink-faint" />
+            Unverified (no gateway key)
+          </span>
+        )}
+        {verification.recovered && (
+          <div className="text-[0.68rem] font-mono text-ink-faint mt-1">
+            signer: {verification.recovered}
+          </div>
+        )}
+        {verification.error && (
+          <div className="text-[0.68rem] text-[#a12626] mt-1">{verification.error}</div>
+        )}
+      </div>
+
       {loading && <div className="text-sm text-ink-muted">Loading measurement…</div>}
       {error && (
         <div className="text-sm text-[#a12626] bg-[#fdecec] border border-[#f2a3a3] rounded-[5px] px-3 py-2">
@@ -224,39 +276,6 @@ export const MeasurementViewer: React.FC<MeasurementViewerProps> = ({
 
       {doc && (
         <>
-          {/* Verification */}
-          <div>
-            <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted mb-1.5">
-              Signature
-            </div>
-            {verification?.status === 'valid' && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-[#b7e0c1] bg-[#eefaf1] text-[#1f6b36] text-[0.72rem] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1f6b36]" />
-                Verified
-              </span>
-            )}
-            {verification?.status === 'invalid' && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-[#f2a3a3] bg-[#fdecec] text-[#a12626] text-[0.72rem] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#a12626]" />
-                Invalid signature
-              </span>
-            )}
-            {verification?.status === 'unknown' && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-border-strong bg-surface-muted text-ink-muted text-[0.72rem] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-ink-faint" />
-                Unverified (no gateway key)
-              </span>
-            )}
-            {verification?.recovered && (
-              <div className="text-[0.68rem] font-mono text-ink-faint mt-1">
-                signer: {verification.recovered}
-              </div>
-            )}
-            {verification?.error && (
-              <div className="text-[0.68rem] text-[#a12626] mt-1">{verification.error}</div>
-            )}
-          </div>
-
           {/* Global description */}
           {doc.md?.global && (
             <div className="text-[0.8rem] text-ink leading-relaxed">

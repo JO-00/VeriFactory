@@ -38,10 +38,26 @@ func New(logger *slog.Logger, cfg config.Config, db *pgxpool.Pool) *Server {
 
 	router.Use(gin.Recovery())
 	router.Use(s.requestLogger())
+	router.Use(corsMiddleware())
 
 	s.registerRoutes()
 
 	return s
+}
+
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func (s *Server) Handler() http.Handler {
