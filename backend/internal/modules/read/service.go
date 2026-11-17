@@ -2,17 +2,34 @@ package read
 
 import (
 	"context"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"veriFactory/backend/internal/database/sqlc"
 )
 
 type Service struct {
-	repo *Repository
+	repo           *Repository
+	ipfsGatewayURL string
+	httpClient     *http.Client
 }
 
 func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+	gateway := strings.TrimSpace(os.Getenv("IPFS_GATEWAY_URL"))
+	if gateway == "" {
+		gateway = "https://ipfs.io"
+	}
+
+	return &Service{
+		repo:           repo,
+		ipfsGatewayURL: strings.TrimRight(gateway, "/"),
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+	}
 }
 
 type GatewayDocumentMessage struct {
@@ -22,6 +39,7 @@ type GatewayDocumentMessage struct {
 	GatewayID          string    `json:"gatewayId"`
 	GatewayAddress     string    `json:"gatewayAddress"`
 	DocumentCID        string    `json:"documentCID"`
+	IPFSExists         bool      `json:"ipfsExists"`
 	Signature          string    `json:"signature"`
 	CreatedAt          time.Time `json:"createdAt"`
 }
@@ -32,6 +50,7 @@ type InspectorReportMessage struct {
 	FacilityAddress    string    `json:"facilityAddress"`
 	InspectorAddress   string    `json:"inspectorAddress"`
 	ReportCID          string    `json:"reportCID"`
+	IPFSExists         bool      `json:"ipfsExists"`
 	Signature          string    `json:"signature"`
 	CreatedAt          time.Time `json:"createdAt"`
 }
@@ -55,6 +74,8 @@ func (s *Service) ListGatewayDocuments(ctx context.Context, facilityAddr, Gatewa
 			CreatedAt:          r.CreatedAt.Time,
 		})
 	}
+
+	s.populateIPFSStatus(ctx, out)
 	return out, nil
 }
 
@@ -88,6 +109,8 @@ func (s *Service) QueryInspectorReports(ctx context.Context, facilityAddr, inspe
 			CreatedAt:          r.CreatedAt.Time,
 		})
 	}
+
+	s.populateInspectorReportIPFSStatus(ctx, out)
 	return out, nil
 }
 
@@ -110,6 +133,8 @@ func (s *Service) ListAllGatewayDocuments(ctx context.Context) ([]GatewayDocumen
 			CreatedAt:          r.CreatedAt.Time,
 		})
 	}
+
+	s.populateIPFSStatus(ctx, out)
 	return out, nil
 }
 
@@ -131,5 +156,51 @@ func (s *Service) ListAllInspectorReports(ctx context.Context) ([]InspectorRepor
 			CreatedAt:          r.CreatedAt.Time,
 		})
 	}
+
+	s.populateInspectorReportIPFSStatus(ctx, out)
 	return out, nil
+}
+
+func (s *Service) checkCIDExists(ctx context.Context, cid string) bool {
+	if strings.TrimSpace(cid) == "" {
+		return false
+	}
+
+	url := s.ipfsGatewayURL + "/ipfs/" + cid
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func (s *Service) populateIPFSStatus(ctx context.Context, docs []GatewayDocumentMessage) {
+	var wg sync.WaitGroup
+	for i := range docs {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			docs[idx].IPFSExists = s.checkCIDExists(ctx, docs[idx].DocumentCID)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func (s *Service) populateInspectorReportIPFSStatus(ctx context.Context, reports []InspectorReportMessage) {
+	var wg sync.WaitGroup
+	for i := range reports {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			reports[idx].IPFSExists = s.checkCIDExists(ctx, reports[idx].ReportCID)
+		}(i)
+	}
+	wg.Wait()
 }
