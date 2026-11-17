@@ -356,9 +356,6 @@ chmod +x entrypoint.sh
 
 Complete the required environment variables before launching the application.
 
-```bash
-docker compose up --build
-```
 
 For additional technical specifications, see [`technical_report.md`](./technical_report.md).
 
