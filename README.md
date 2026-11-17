@@ -354,8 +354,8 @@ chmod +x entrypoint.sh
 ./entrypoint.sh
 ```
 
-Complete the required environment variables before launching the application.
-
+open
+`http://localhost:5173`
 
 For additional technical specifications, see [`technical_report.md`](./technical_report.md).
 
