@@ -1,4 +1,3 @@
-// file: DeployUnfreezeFacet.ts
 import * as fs from "fs";
 import * as path from "path";
 
@@ -11,7 +10,7 @@ import {
     ContractExecuteTransaction,
     ContractCallQuery,
     Hbar,
-    ContractByteCodeQuery
+    ContractByteCodeQuery,
 } from "@hiero-ledger/sdk";
 
 import { Interface } from "ethers";
@@ -21,52 +20,74 @@ import { FacilityParamsBuilder } from "../common_utils/FactoryParamBuilder";
 config();
 
 // --------------------------------------------------
-// CONFIGURATION
+// CONFIGURATION (all tunable via env vars, with defaults)
 // --------------------------------------------------
 
-const OUT_DIR = path.resolve(
-    __dirname,
-    "../../hashgraph/out"
+const OUT_DIR = process.env.OUT_DIR
+    ? path.resolve(process.env.OUT_DIR)
+    : path.resolve(__dirname, "../../hashgraph/out");
+
+const FACILITY_IMPLEMENTATION_ADDRESS =
+    process.env.FACILITY_IMPLEMENTATION_ADDRESS ??
+    "0x0000000000000000000000000000000000000000adb6b4";
+
+const MAX_TRANSACTION_FEE_HBAR = Number(
+    process.env.MAX_TRANSACTION_FEE_HBAR ?? 20
 );
 
-// Fill manually with the FacilityRegistry EVM address.
-const FACILITY_IMPLEMENTATION_ADDRESS = "0x0000000000000000000000000000000000adb6b4";
-
-// Leave empty to deploy.
-// Fill with existing Hedera Contract IDs to reuse deployments.
-const EXISTING = {
-    factory: "0.0.11394765",
-    committee: "0.0.11480983",
-    init: "0.0.11480985",
-    visualization: "0.0.11394774",
-    // ADD YOUR NEW FACET HERE IF YOU WANT TO REUSE IT IN THE FUTURE
-    unfreezeFacet: "0.0.11486208" 
+const GAS = {
+    factory: Number(process.env.FACTORY_GAS ?? 15_000_000),
+    facet: Number(process.env.FACET_GAS ?? 8_000_000),
+    registration: Number(process.env.REGISTRATION_GAS ?? 1_000_000),
+    query: Number(process.env.QUERY_GAS ?? 100_000),
 };
 
-const MAX_TRANSACTION_FEE_HBAR = 20;
+const EXISTING = {
+    factory: "0.0.11394765",
+    committee: "0.0.11394768",
+    init: "0.0.11394772",
+    visualization: "0.0.11394774"
+};
 
-const FACTORY_GAS = 15_000_000;
-const FACET_GAS = 8_000_000;
-const REGISTRATION_GAS = 1_000_000;
+// --------------------------------------------------
+// TYPES
+// --------------------------------------------------
+
+interface Artifact {
+    contractName: string;
+    abi: any[];
+    bytecode: { object: string };
+}
+
+interface FacetConfig {
+    name: string;
+    artifactNames: string[];
+    existingId: string;
+    gas: number;
+    functionNames: string[];
+    /** If true, prepend FacilityParamsBuilder constructor params (Factory only). */
+    prependConstructorParams?: boolean;
+}
 
 // --------------------------------------------------
 // ARTIFACT LOADER
 // --------------------------------------------------
 
-function findArtifact(names: string[]): any {
+const artifactCache = new Map<string, Artifact>();
+
+function loadArtifact(names: string[]): Artifact {
+    const cacheKey = names.join("|");
+    const cached = artifactCache.get(cacheKey);
+    if (cached) return cached;
+
     const candidates: string[] = [];
 
     function walk(dir: string) {
-        for (const entry of fs.readdirSync(dir, {
-            withFileTypes: true
-        })) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const fullPath = path.join(dir, entry.name);
-
             if (entry.isDirectory()) {
                 walk(fullPath);
-            } else if (
-                names.some(name => entry.name === `${name}.json`)
-            ) {
+            } else if (names.some(n => entry.name === `${n}.json`)) {
                 candidates.push(fullPath);
             }
         }
@@ -80,14 +101,20 @@ function findArtifact(names: string[]): any {
         );
     }
 
-    const artifact = JSON.parse(
+    // Prefer exact-name matches over fallback names, and prefer shallow paths.
+    candidates.sort((a, b) => {
+        const aExact = names.includes(path.basename(a, ".json")) ? 0 : 1;
+        const bExact = names.includes(path.basename(b, ".json")) ? 0 : 1;
+        if (aExact !== bExact) return aExact - bExact;
+        return a.split(path.sep).length - b.split(path.sep).length;
+    });
+
+    const artifact: Artifact = JSON.parse(
         fs.readFileSync(candidates[0], "utf8")
     );
 
-    console.log(
-        `Loaded ${artifact.contractName}: ${candidates[0]}`
-    );
-
+    console.log(`Loaded ${artifact.contractName}: ${candidates[0]}`);
+    artifactCache.set(cacheKey, artifact);
     return artifact;
 }
 
@@ -99,8 +126,11 @@ function normalizeAddress(address: string): string {
     return address.toLowerCase().replace(/^0x/, "");
 }
 
-function getContractId(id: string): ContractId {
-    return ContractId.fromString(id);
+/** Returns true if the bytecode looks deployable (non-empty valid hex). */
+function isValidBytecode(bytecode: string | undefined): boolean {
+    if (!bytecode) return false;
+    const hex = bytecode.startsWith("0x") ? bytecode.slice(2) : bytecode;
+    return hex.length > 0 && hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex);
 }
 
 async function verifyContractExists(
@@ -112,9 +142,7 @@ async function verifyContractExists(
         .execute(client);
 
     if (bytecode.length === 0) {
-        throw new Error(
-            `No bytecode found for ${contractId.toString()}`
-        );
+        throw new Error(`No bytecode found for ${contractId.toString()}`);
     }
 }
 
@@ -130,28 +158,21 @@ async function deployContract(
 ): Promise<ContractId> {
     console.log(`\nDeploying ${name}...`);
 
-    if (!bytecode || bytecode === "0x") {
-        throw new Error(`${name}: bytecode is empty`);
+    if (!isValidBytecode(bytecode)) {
+        throw new Error(`${name}: invalid or empty bytecode`);
     }
 
     const cleanBytecode = bytecode.startsWith("0x")
         ? bytecode.slice(2)
         : bytecode;
 
-    if (
-        cleanBytecode.length % 2 !== 0 ||
-        !/^[0-9a-fA-F]+$/.test(cleanBytecode)
-    ) {
-        throw new Error(`${name}: invalid hexadecimal bytecode`);
-    }
-
     console.log(`Gas limit: ${gas}`);
 
-    const flow = new ContractCreateFlow()
+    const response = await new ContractCreateFlow()
         .setBytecode(cleanBytecode)
-        .setGas(gas);
+        .setGas(gas)
+        .execute(client);
 
-    const response = await flow.execute(client);
     const receipt = await response.getReceipt(client);
 
     if (!receipt.contractId) {
@@ -185,17 +206,12 @@ async function getOrDeploy(
     gas: number
 ): Promise<ContractId> {
     if (existingId.trim() !== "") {
-        const contractId = getContractId(existingId);
-
+        const contractId = ContractId.fromString(existingId.trim());
         console.log(`\nReusing ${name}:`, contractId.toString());
 
         await verifyContractExists(contractId, client);
 
-        console.log(
-            `${name} verified at:`,
-            contractId.toEvmAddress()
-        );
-
+        console.log(`${name} verified at:`, contractId.toEvmAddress());
         return contractId;
     }
 
@@ -203,30 +219,53 @@ async function getOrDeploy(
 }
 
 // --------------------------------------------------
-// FACET REGISTRATION / UPGRADE
+// FACET REGISTRATION
 // --------------------------------------------------
 
+/** Builds the calldata for `facets(bytes4)` query. */
+function encodeFacetsQuery(
+    factoryInterface: Interface,
+    selector: string
+): Buffer {
+    const calldata = factoryInterface.encodeFunctionData("facets", [selector]);
+    return Buffer.from(calldata.slice(2), "hex");
+}
+
+/** Queries a selector and returns its registered EVM address (normalized). */
+async function queryRegisteredFacet(
+    factoryId: ContractId,
+    factoryInterface: Interface,
+    selector: string,
+    client: Client
+): Promise<string> {
+    const result = await new ContractCallQuery()
+        .setContractId(factoryId)
+        .setGas(GAS.query)
+        .setFunctionParameters(
+            encodeFacetsQuery(factoryInterface, selector)
+        )
+        .execute(client);
+
+    return normalizeAddress(result.getAddress(0));
+}
+
 async function registerFacet(
-    name: string,
+    config: FacetConfig,
     factoryId: ContractId,
     facetId: ContractId,
-    artifact: any,
-    factoryArtifact: any,
-    functionNames: string[],
+    artifact: Artifact,
+    factoryArtifact: Artifact,
     client: Client
 ): Promise<void> {
+    const { name, functionNames } = config;
     const iface = new Interface(artifact.abi);
     const factoryInterface = new Interface(factoryArtifact.abi);
 
-    const selectors = functionNames.map(functionName => {
-        const fragment = iface.getFunction(functionName);
-
+    const selectors = functionNames.map(fnName => {
+        const fragment = iface.getFunction(fnName);
         if (!fragment) {
-            throw new Error(
-                `${name}: function not found in ABI: ${functionName}`
-            );
+            throw new Error(`${name}: function not found in ABI: ${fnName}`);
         }
-
         return fragment.selector;
     });
 
@@ -235,48 +274,37 @@ async function registerFacet(
 
     console.log(`\nChecking ${name} selectors...`);
 
-    const selectorsToRegister: string[] = [];
+    const missingSelectors: string[] = [];
 
     for (const selector of selectors) {
-        const calldata = factoryInterface.encodeFunctionData(
-            "facets",
-            [selector]
-        );
-
         try {
-            const result = await new ContractCallQuery()
-                .setContractId(factoryId)
-                .setGas(100_000)
-                .setFunctionParameters(
-                    Buffer.from(calldata.slice(2), "hex")
-                )
-                .execute(client);
+            const currentAddress = await queryRegisteredFacet(
+                factoryId,
+                factoryInterface,
+                selector,
+                client
+            );
 
-            const registeredAddress = result.getAddress(0);
-            const currentAddress = normalizeAddress(registeredAddress);
+            if (currentAddress === expectedAddress) continue;
 
-            if (currentAddress === expectedAddress) {
-                continue;
+            if (currentAddress !== "0000000000000000000000000000000000000000") {
+                throw new Error(
+                    `${name}: selector ${selector} already points to ` +
+                    `${currentAddress}, expected ${facetAddress}`
+                );
             }
 
-            selectorsToRegister.push(selector);
+            missingSelectors.push(selector);
         } catch (error: any) {
+            // The facets() getter may revert with "no facet for selector".
+            // That specific revert means "not registered" — everything else
+            // is a real error we should surface.
             const errorData =
                 error?.contractFunctionResult?.errorMessage ??
                 error?.error?.contractFunctionResult?.errorMessage;
 
-            const missingFacetRevert =
-                "0x08c379a0" +
-                "0000000000000000000000000000000000000000000000000000000000000020" +
-                "0000000000000000000000000000000000000000000000000000000000000015" +
-                "6e6f20666163657420666f722073656c6563746f72" +
-                "000000000000000000000000000000000000000000000000000000000000";
-
-            if (
-                typeof errorData === "string" &&
-                errorData.toLowerCase() === missingFacetRevert.toLowerCase()
-            ) {
-                selectorsToRegister.push(selector);
+            if (typeof errorData === "string" && looksLikeMissingFacetRevert(errorData)) {
+                missingSelectors.push(selector);
                 continue;
             }
 
@@ -284,7 +312,7 @@ async function registerFacet(
         }
     }
 
-    if (selectorsToRegister.length === 0) {
+    if (missingSelectors.length === 0) {
         console.log(
             `${name}: all ${selectors.length} selectors already registered`
         );
@@ -292,62 +320,47 @@ async function registerFacet(
     }
 
     console.log(
-        `${name}: ${selectorsToRegister.length} selectors need registration/update`
+        `${name}: ${missingSelectors.length} selector(s) need registration`
     );
 
     const encodedFunction = factoryInterface.encodeFunctionData(
         "addFacet",
-        [facetAddress, selectorsToRegister]
+        [facetAddress, missingSelectors]
     );
-
-    const transaction = new ContractExecuteTransaction()
-        .setContractId(factoryId)
-        .setGas(REGISTRATION_GAS)
-        .setFunctionParameters(
-            Buffer.from(encodedFunction.slice(2), "hex")
-        );
 
     console.log(`Registering ${name}...`);
 
-    const response = await transaction.execute(client);
+    const response = await new ContractExecuteTransaction()
+        .setContractId(factoryId)
+        .setGas(GAS.registration)
+        .setFunctionParameters(
+            Buffer.from(encodedFunction.slice(2), "hex")
+        )
+        .execute(client);
 
-    console.log(
-        "Registration transaction:",
-        response.transactionId.toString()
-    );
+    console.log("Registration transaction:", response.transactionId.toString());
 
     const receipt = await response.getReceipt(client);
 
     if (receipt.status.toString() !== "SUCCESS") {
-        throw new Error(
-            `${name}: registration failed: ${receipt.status}`
-        );
+        throw new Error(`${name}: registration failed: ${receipt.status}`);
     }
 
     console.log(`${name}: registration transaction successful`);
 
+    // Verify every selector after registration.
     for (const selector of selectors) {
-        const calldata = factoryInterface.encodeFunctionData(
-            "facets",
-            [selector]
+        const registered = await queryRegisteredFacet(
+            factoryId,
+            factoryInterface,
+            selector,
+            client
         );
 
-        const result = await new ContractCallQuery()
-            .setContractId(factoryId)
-            .setGas(100_000)
-            .setFunctionParameters(
-                Buffer.from(calldata.slice(2), "hex")
-            )
-            .execute(client);
-
-        const registeredAddress = result.getAddress(0);
-
-        if (
-            normalizeAddress(registeredAddress) !== expectedAddress
-        ) {
+        if (registered !== expectedAddress) {
             throw new Error(
                 `${name}: verification failed for selector ${selector}. ` +
-                `Got ${registeredAddress}, expected ${facetAddress}`
+                `Got ${registered}, expected ${expectedAddress}`
             );
         }
     }
@@ -357,17 +370,99 @@ async function registerFacet(
     );
 }
 
+/**
+ * Matches the ABI-encoded `Error("no facet for selector")` revert.
+ * Doing this via exact string comparison is brittle; instead we detect the
+ * standard Error(string) prefix and decode the string payload.
+ */
+function looksLikeMissingFacetRevert(errorData: string): boolean {
+    const hex = errorData.toLowerCase().replace(/^0x/, "");
+    const ERROR_SELECTOR = "08c379a0"; // Error(string)
+    if (!hex.startsWith(ERROR_SELECTOR)) return false;
+
+    try {
+        const abi = new Interface(["error Error(string)"]);
+        const decoded = abi.decodeErrorResult("Error", "0x" + hex);
+        return String(decoded[0]).toLowerCase().includes("no facet for selector");
+    } catch {
+        return false;
+    }
+}
+
 // --------------------------------------------------
 // MAIN
 // --------------------------------------------------
 
 async function main() {
     // 1. Load artifacts
-    const factoryArtifact = findArtifact(["Factory"]);
-    
-    // We only need the Factory artifact to get the `addFacet` ABI, 
-    // and the new UnfreezeFacet artifact to get its selector.
-    const unfreezeFacetArtifact = findArtifact(["UnfreezeFacet"]);
+    const factoryArtifact = loadArtifact(["Factory"]);
+
+    const facetConfigs: FacetConfig[] = [
+        {
+            name: "CommitteeInspector",
+            artifactNames: ["CommitteeInspector"],
+            existingId: EXISTING.committee,
+            gas: GAS.facet,
+            functionNames: [
+                "generate_new_committee",
+                "rank_candidates",
+                "getCurrentInspectors",
+                "become_candidate",
+                "quit_candidateship",
+                "InspectorSignContract",
+                "change_candidate_documents",
+                "set_committee_member",
+                "remove_committee_member",
+            ],
+        },
+        {
+            name: "Visualization",
+            artifactNames: ["VisualizationFacet", "Visualization"],
+            existingId: EXISTING.visualization,
+            gas: GAS.facet,
+            functionNames: [
+                "getFactoryDocs",
+                "getDeployedFacilities",
+                "getFacilityCount",
+                "getFactoryLegalContracts",
+                "getInspectorLegalContract",
+                "getFacilityGlobalInfo",
+                "getFacilityDocs",
+                "getFacilitySignedContracts",
+                "getFacilitiesFromSignedContract",
+                "getFacilityCommitteeMembers",
+                "getCurrentCommittee",
+                "get_top_6_votes",
+                "get_number_of_voters",
+                "getFacilityInspector",
+                "getInspectorFacilities",
+                "getDAO",
+                "getCandidates",
+                "getFacilityExistenceStatus",
+                "view_staked_members",
+                "memberStake",
+                "CandidateIsCompliant",
+                "votes_frozen",
+                "latest_committee_generation_timestamp",
+            ],
+        },
+        {
+            name: "InitFactory",
+            artifactNames: ["InitFactory"],
+            existingId: EXISTING.init,
+            gas: GAS.facet,
+            functionNames: [
+                "createFacility",
+                "removeFacilityFromPlatform",
+                "updateFacilityMeta",
+                "addFacilityDocument",
+                "replaceFacilityDocument",
+                "SignTangibleContract",
+                "setLogo",
+                "setPlatformDocs",
+            ],
+        },
+    ];
 
     // 2. Connect to Hedera Testnet
     const operatorId = process.env.OPERATOR_ID;
@@ -376,75 +471,101 @@ async function main() {
     if (!operatorId) throw new Error("OPERATOR_ID missing from .env");
     if (!privateKey) throw new Error("OPERATOR_KEY missing from .env");
 
-    const client = Client.forTestnet();
-    const operatorKey = PrivateKey.fromStringECDSA(privateKey);
+    if (!EXISTING.factory && !FACILITY_IMPLEMENTATION_ADDRESS) {
+        throw new Error(
+            "FACILITY_IMPLEMENTATION_ADDRESS must be filled manually."
+        );
+    }
 
-    client.setOperator(AccountId.fromString(operatorId), operatorKey);
+    const client = Client.forTestnet();
+    client.setOperator(
+        AccountId.fromString(operatorId),
+        PrivateKey.fromStringECDSA(privateKey)
+    );
     client.setDefaultMaxTransactionFee(new Hbar(MAX_TRANSACTION_FEE_HBAR));
 
     console.log("\nOperator:", operatorId);
-    console.log("Default maximum transaction fee:", MAX_TRANSACTION_FEE_HBAR, "HBAR");
+    console.log(
+        "Default maximum transaction fee:",
+        MAX_TRANSACTION_FEE_HBAR,
+        "HBAR"
+    );
 
     try {
-        // 3. Deploy or reuse Factory (We MUST reuse it, not deploy a new one)
+        // 3. Build Factory deployment bytecode.
+        let factoryDeploymentData = "";
+
         if (!EXISTING.factory) {
-            throw new Error("EXISTING.factory must be set. Do not deploy a fresh factory to patch!");
-        }
-        
-        const factoryId = getContractId(EXISTING.factory);
-        await verifyContractExists(factoryId, client);
-        console.log(`\nReusing Factory: ${factoryId.toString()} (${factoryId.toEvmAddress()})`);
+            if (!isValidBytecode(factoryArtifact.bytecode.object)) {
+                throw new Error("Factory: invalid bytecode in artifact");
+            }
 
-        // 4. Deploy or reuse UnfreezeFacet
-        const unfreezeId = await getOrDeploy(
-            "UnfreezeFacet",
-            EXISTING.unfreezeFacet,
-            unfreezeFacetArtifact.bytecode.object,
+            const constructorParams = FacilityParamsBuilder.buildConstructorParams(
+                FACILITY_IMPLEMENTATION_ADDRESS,
+                []
+            );
+
+            const factoryBytecode = factoryArtifact.bytecode.object.startsWith("0x")
+                ? factoryArtifact.bytecode.object.slice(2)
+                : factoryArtifact.bytecode.object;
+
+            factoryDeploymentData =
+                factoryBytecode + Buffer.from(constructorParams).toString("hex");
+        }
+
+        // 4. Deploy or reuse Factory
+        const factoryId = await getOrDeploy(
+            "Factory",
+            EXISTING.factory,
+            factoryDeploymentData,
             client,
-            FACET_GAS
+            GAS.factory
         );
 
-        // 5. Register UnfreezeFacet selector
-        await registerFacet(
-            "UnfreezeFacet",
-            factoryId,
-            unfreezeId,
-            unfreezeFacetArtifact,
-            factoryArtifact,
-            [
-                "unfreeze_votes", // <--- The function name from your Solidity
-                "assign_inspectors_if_frozen"
-            ],
-            client
-        );
+        // 5. Deploy or reuse facets + 6. register their selectors
+        const deployedFacets: Record<string, ContractId> = {};
 
-        // 6. Final summary
-        console.log("\n======================================");
-        console.log("FACET PATCH COMPLETE");
-        console.log("======================================");
-        console.log("Factory:", factoryId.toString(), factoryId.toEvmAddress());
-        console.log("UnfreezeFacet:", unfreezeId.toString(), unfreezeId.toEvmAddress());
-        console.log("======================================");
+        for (const fc of facetConfigs) {
+            const artifact = loadArtifact(fc.artifactNames);
 
-        console.log("\nExecuting assign_inspectors_if_frozen...");
-        const iface = new Interface(unfreezeFacetArtifact.abi);
-        const calldata = iface.encodeFunctionData("assign_inspectors_if_frozen", []);
+            const facetId = await getOrDeploy(
+                fc.name,
+                fc.existingId,
+                artifact.bytecode.object,
+                client,
+                fc.gas
+            );
 
-        const tx = await new ContractExecuteTransaction()
-            .setContractId(factoryId)
-            .setGas(1_000_000)
-            .setFunctionParameters(Buffer.from(calldata.slice(2), "hex"))
-            .execute(client);
+            deployedFacets[fc.name] = facetId;
 
-        const receipt = await tx.getReceipt(client);
-        
-        if (receipt.status.toString() !== "SUCCESS") {
-            throw new Error(`unfreeze_votes failed: ${receipt.status}`);
+            await registerFacet(
+                fc,
+                factoryId,
+                facetId,
+                artifact,
+                factoryArtifact,
+                client
+            );
         }
-        
-        console.log("assign_inspectors_if_frozen executed successfully:", tx.transactionId.toString());
-        
 
+        // 7. Final summary
+        console.log("\n======================================");
+        console.log("FACTORY DEPLOYMENT COMPLETE");
+        console.log("======================================");
+        console.log(
+            "Factory:",
+            factoryId.toString(),
+            factoryId.toEvmAddress()
+        );
+        for (const fc of facetConfigs) {
+            const id = deployedFacets[fc.name];
+            console.log(
+                `${fc.name}:`,
+                id.toString(),
+                id.toEvmAddress()
+            );
+        }
+        console.log("======================================");
     } finally {
         client.close();
     }

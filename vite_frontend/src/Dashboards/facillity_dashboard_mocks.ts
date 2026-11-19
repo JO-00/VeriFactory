@@ -4,7 +4,7 @@ import { FactoryEvents } from "../HashGraphUtils/Events/factory";
 import { FacilityContractRead } from "../HashGraphUtils/Contracts/Facility/FacilityRead";
 import { FacilityContractWrite } from "../HashGraphUtils/Contracts/Facility/FacilityWrite";
 import type {  CadencePolicy, FacilityAddedEvent, RelayerRegisteredEvent , KeyRotatedEvent, StakedMember, SignedContract} from "../types";
-import { Signer, Status } from "@hiero-ledger/sdk";
+import { Signer } from "@hiero-ledger/sdk";
 import { FactoryContractRead } from "../HashGraphUtils/Contracts/Factory/FactoryRead";
 import { FactoryWriteContract } from "../HashGraphUtils/Contracts/Factory/FactoryWrite";
 
@@ -15,79 +15,11 @@ import { FactoryWriteContract } from "../HashGraphUtils/Contracts/Factory/Factor
 export type BigNumberType = bigint | number;
 
 
-export interface GatewayAssignedEvent {
-  gatewayId: string;
-  relayerAddress: string;
-}
-
-export interface GatewayReassignedEvent {
-  gatewayId: string;
-  oldRelayer: string;
-  newRelayer: string;
-}
 
 
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8082';
 
-
-
-// ============================================================
-// Core entity lists
-// ============================================================
-
-const GATEWAYS: string[] = [
-  '0xa1000000000000000000000000000000000000g1',
-  '0xa1000000000000000000000000000000000000g2',
-  '0xa1000000000000000000000000000000000000g3',
-  '0xa1000000000000000000000000000000000000g4',
-];
-
-const RELAYERS: string[] = [
-  '0xb2000000000000000000000000000000000000r1',
-  '0xb2000000000000000000000000000000000000r2',
-  '0xb2000000000000000000000000000000000000r3',
-];
-
-// ============================================================
-// Relationships
-// ============================================================
-
-
-
-const GATEWAY_ASSIGNED_EVENTS: GatewayAssignedEvent[] = [
-  { gatewayId: GATEWAYS[0], relayerAddress: RELAYERS[0] },
-  { gatewayId: GATEWAYS[0], relayerAddress: RELAYERS[1] },
-  { gatewayId: GATEWAYS[1], relayerAddress: RELAYERS[1] },
-  { gatewayId: GATEWAYS[2], relayerAddress: RELAYERS[0] },
-  { gatewayId: GATEWAYS[2], relayerAddress: RELAYERS[2] },
-  { gatewayId: GATEWAYS[3], relayerAddress: RELAYERS[2] },
-];
-
-const GATEWAY_REASSIGNED_EVENTS: GatewayReassignedEvent[] = [
-  { gatewayId: GATEWAYS[1], oldRelayer: RELAYERS[0], newRelayer: RELAYERS[1] },
-];
-
-
-
-
-// ============================================================
-// Mock getters
-// ============================================================
-
-
-
-// ── Events ──
-export const getGatewayAssignedEvents = async (facilityAddress: string, gateway :string): Promise<GatewayAssignedEvent[]> =>
-  gateway
-    ? GATEWAY_ASSIGNED_EVENTS.filter((e) => e.gatewayId === gateway)
-    : [...GATEWAY_ASSIGNED_EVENTS];
-
-export const getGatewayReassignedEvents = async (
-  gateway: string,
-  facilityAddress : string
-): Promise<GatewayReassignedEvent[]> =>
-  gateway
-    ? GATEWAY_REASSIGNED_EVENTS.filter((e) => e.gatewayId === gateway)
-    : [...GATEWAY_REASSIGNED_EVENTS];
 
 export const getKeyRotatedEvents = async (facilityAddress: string, gatewayId : string): Promise<KeyRotatedEvent[]> =>
   await FacilityEvents.getKeyRotatedEventsByGateway({facilityAddress, gatewayId})
@@ -151,8 +83,7 @@ export interface GatewayDocumentAttestation {
   createdAt: string;
 }
 
-const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8082';
+
 
 export const getAllMeasurements = async (
   facilityAddress: string,
@@ -215,9 +146,4 @@ export const getFacilitySignedContracts = async (
   facilityAddress: string
 ): Promise<SignedContract[]> => {
   return await FactoryContractRead.getFacilitySignedContracts(facilityAddress);
-};
-
-export const FreezeVotes = async (signer: Signer): Promise<boolean> => {
-  const receipt = await FactoryWriteContract.attemptFreezeVotes(signer);
-  return receipt?.status === Status.Success;
 };

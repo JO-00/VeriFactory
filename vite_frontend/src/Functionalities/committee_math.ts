@@ -3,7 +3,7 @@ import { COMMITTEE_PERIOD_SECONDS } from '../Dashboards/dashboard_constants';
 import { FactoryContractRead } from '../HashGraphUtils/Contracts/Factory/FactoryRead';
 import { resolveEvmAddress } from './getFacilityInfo';
 import { FactoryEvents } from '../HashGraphUtils/Events/factory';
-import { Signer , Status} from '@hiero-ledger/sdk';
+import { Signer} from '@hiero-ledger/sdk';
 import { FactoryWriteContract } from '../HashGraphUtils/Contracts/Factory/FactoryWrite';
 
 export async function get_latest_committee_generation_timestamp(): Promise<bigint> {
@@ -111,12 +111,6 @@ export async function generate_new_committee(signer : Signer){
 export async function get_inspector_legal_contract(){
   return await FactoryContractRead.getInspectorLegalContract();
 }
-
-export async function assign_inspectors_to_facilities(signer : Signer){
-  const tx = await FactoryWriteContract.AssignInspectorsToFacilities(signer);
-  return tx?.status === Status.Success;
-}
-
 export async function can_assign_inspectors() : Promise<boolean>{
   return (await FactoryContractRead.getInspectorFacilities((await FactoryContractRead.getTop6Votes())[0].wallet)).length === 0
 }

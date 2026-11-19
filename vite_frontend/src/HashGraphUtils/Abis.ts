@@ -32,7 +32,5 @@ export const factoryAbi = new Interface([
   "function remove_committee_member(address member, address facility_contract)",
   "function removeFacilityFromPlatform(address facility_contract, string memory attached_document)",
   "function InspectorSignContract(uint8 v,bytes32 r,bytes32 s)",
-  "function backfillEvents()",
-  "function unfreeze_votes()",
-  "function assign_inspectors_if_frozen()"
+  "function backfillEvents()"
 ]);

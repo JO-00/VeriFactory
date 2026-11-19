@@ -50,11 +50,15 @@ export class FacilityContractWrite {
       const receipt = await response.getReceipt(testnetClient);
 
       return receipt;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorDetails =
+        typeof error === "object" && error !== null
+          ? (error as { message?: unknown; data?: unknown })
+          : undefined;
       console.error(
         `[FacilityContractWrite.${functionName}] Execution failed:`,
-        error?.message || error,
-        error?.data ? JSON.stringify(error.data) : ""
+        errorDetails?.message || error,
+        errorDetails?.data ? JSON.stringify(errorDetails.data) : ""
       );
       throw error;
     }

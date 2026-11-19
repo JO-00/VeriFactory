@@ -2,15 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { fetchIPFSBlobUrl } from './../Functionalities/IPFSHelpers';
-import { FreezeVotes, shortAddr } from "./facillity_dashboard_mocks";
+import { shortAddr } from "./facillity_dashboard_mocks";
 import { useWallet } from '../Common/WalletProvider';
-import { 
-  get_votes_status, 
-  get_inspector_legal_contract, 
-  get_inspector_facilities, 
-  assign_inspectors_to_facilities,
+import {
+  get_votes_status,
+  get_inspector_legal_contract,
+  get_inspector_facilities,
   get_top_6_candidates,
-  can_assign_inspectors
 } from "./../Functionalities/committee_math";
 import { authenticateFacility } from '../Functionalities/getFacilityInfo';
 import type { DocumentInput, CandidateVotes, UserFacilityRole } from '../types';
@@ -33,14 +31,10 @@ interface InspectorViewProps {
 const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
   const { signer } = useWallet();
   const [loading, setLoading] = useState(true);
-  const [freezing, setFreezing] = useState(false);
-  const [assigning, setAssigning] = useState(false); 
   const [votesFrozen, setVotesFrozen] = useState(false);
-  
-  const [canAssign, setCanAssign] = useState(false);
 
   const [inspectors, setInspectors] = useState<CandidateVotes[]>([]);
-  
+
   const EMPTY_DOCUMENT: DocumentInput = {
     cid: "",
     docType: "",
@@ -48,7 +42,7 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
     uploadedAt: 0,
   };
 
-  const [legalContract, setLegalContract] = useState<DocumentInput>(EMPTY_DOCUMENT);  
+  const [legalContract, setLegalContract] = useState<DocumentInput>(EMPTY_DOCUMENT);
   const [inspectorFacilities, setInspectorFacilities] = useState<Record<string, string[]>>({});
   const [selectedInspector, setSelectedInspector] = useState<string | null>(null);
 
@@ -58,16 +52,14 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [frozen, top6, legal, assignable] = await Promise.all([
+      const [frozen, top6, legal] = await Promise.all([
         get_votes_status(),
-        get_top_6_candidates(), 
+        get_top_6_candidates(),
         get_inspector_legal_contract(),
-        can_assign_inspectors()
       ]);
 
       setVotesFrozen(frozen);
       setLegalContract(legal);
-      setCanAssign(assignable);
 
       const top5Inspectors = top6.slice(0, 5);
       setInspectors(top5Inspectors);
@@ -85,7 +77,7 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
         })
       );
       setInspectorFacilities(facilitiesMap);
-      
+
     } catch (err) {
       console.error('[InspectorView] load failed', err);
     } finally {
@@ -94,32 +86,11 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
   };
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
-
-  const handleFreeze = async () => {
-    if (!signer) return;
-    setFreezing(true);
-    try {
-      const success = await FreezeVotes(signer);
-      if (success) await loadData();
-    } finally {
-      setFreezing(false);
-    }
-  };
-
-  const handleAssign = async () => {
-    if (!signer || !canAssign) return;
-    setAssigning(true);
-    try {
-      const success = await assign_inspectors_to_facilities(signer);
-      if (success) await loadData();
-    } catch (err) {
-      console.error('Failed to assign inspectors', err);
-    } finally {
-      setAssigning(false);
-    }
-  };
 
   const previewLegalContract = async () => {
     if (!legalContract?.cid) return;
@@ -208,40 +179,6 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
               View Legal Contract
             </button>
           </span>
-          
-          <button
-            onClick={handleFreeze}
-            disabled={votesFrozen || freezing || !signer}
-            title={!signer ? 'Connect wallet to freeze' : ''}
-            className={`rounded-[5px] px-3.5 py-2 text-sm font-semibold border ${
-              !votesFrozen && !freezing && signer
-                ? 'border-success bg-success text-white hover:brightness-110 cursor-pointer'
-                : 'border-border-strong bg-surface-muted text-ink-faint cursor-not-allowed'
-            }`}
-          >
-            {freezing ? 'Freezing…' : votesFrozen ? 'Votes Frozen' : 'Freeze Votes'}
-          </button>
-
-          <button
-            onClick={handleAssign}
-            disabled={assigning || !canAssign || !signer}
-            title={
-              !signer
-                ? 'Connect wallet to assign inspectors.'
-                : !votesFrozen 
-                  ? 'You must freeze the votes before assigning inspectors.' 
-                  : !canAssign 
-                    ? 'Inspectors cannot be assigned right now (check contract conditions).' 
-                    : ''
-            }
-            className={`rounded-[5px] px-3.5 py-2 text-sm font-semibold border ${
-              !assigning && canAssign && signer
-                ? 'border-accent bg-accent text-white hover:brightness-110 cursor-pointer'
-                : 'border-border-strong bg-surface-muted text-ink-faint cursor-not-allowed'
-            }`}
-          >
-            {assigning ? 'Assigning…' : 'Assign Inspectors'}
-          </button>
         </div>
       </div>
 
@@ -261,7 +198,7 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
             {votesFrozen ? 'Frozen' : 'Active'}
           </span>
         </div>
-        
+
         <div className="bg-surface border border-border rounded-md px-4 py-3.5">
           <div className="text-sm text-ink-muted">Total Inspectors</div>
           <div className="text-2xl font-semibold tracking-[-0.02em] mt-1.5">
@@ -319,7 +256,7 @@ const InspectorView: React.FC<InspectorViewProps> = ({ onAuthenticated }) => {
                   {selectedInspector}
                 </div>
               </div>
-              
+
               <div>
                 <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted mb-2">Assigned Facilities ({inspectorFacilities[selectedInspector]?.length || 0})</div>
                 {(!inspectorFacilities[selectedInspector] || inspectorFacilities[selectedInspector].length === 0) ? (

@@ -1,5 +1,4 @@
 import type { Inspector , FacilityData, InitialGatewayInput, DocumentInput, UserFacilityRole, Measurement} from "../types";
-import type { GatewayAssignedEvent , GatewayReassignedEvent  } from "./facillity_dashboard_mocks";
 import type { KeyRotatedEvent } from "../types";
 
 export interface InspectorPopupProps {
@@ -100,4 +99,14 @@ export interface EventListProps {
   assigned: GatewayAssignedEvent[];
   reassigned: GatewayReassignedEvent[];
   rotations: KeyRotatedEvent[];
+}
+export interface GatewayAssignedEvent {
+  gatewayId: string;
+  relayerAddress: string;
+}
+
+export interface GatewayReassignedEvent {
+  gatewayId: string;
+  oldRelayer: string;
+  newRelayer: string;
 }

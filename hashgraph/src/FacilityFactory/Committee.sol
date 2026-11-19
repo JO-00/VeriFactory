@@ -94,6 +94,7 @@ contract CommitteeInspector is FactoryAuth, ICommitteeInspector {
         if (!l.votes_frozen){
 
             if (
+                    (l.voters.length == 5) ||
                     (l.candidates.length <= 5) ||
                     (l.top_6_votes[4].votes - l.top_6_votes[5].votes >= 5 && l.voters.length >= 4) ||
                     (l.voters.length >= 3 && block.timestamp - l.latest_committee_generation_timestamp >= 2 days)

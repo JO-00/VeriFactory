@@ -226,12 +226,4 @@ export class FactoryWriteContract {
 
     return await this.execute(signer, parameters, gas);
   }
-
-  static async AssignInspectorsToFacilities(signer : Signer , gas : number = 1_500_000) : Promise <TransactionReceipt>{
-    const parameters = this.encodeData("assign_inspectors_if_frozen", [])
-    const receipt = await this.execute(signer , parameters , gas);
-    return receipt;
-  }
-
-
 }

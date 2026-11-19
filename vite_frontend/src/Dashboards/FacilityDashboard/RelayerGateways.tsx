@@ -6,17 +6,13 @@ import {
   getGatewayStatus,
   getAllMeasurements,
   getRelayerRegisteredAt,
-  getGatewayReassignedEvents,
   getKeyRotatedEvents,
-  getGatewayAssignedEvents,
   shortAddr,
   formatCadence,
   formatTimestamp,
 } from './../facillity_dashboard_mocks';
 import { MeasurementViewer } from './../../Components/MeasurementViewer';
 import type {
-  GatewayAssignedEvent,
-  GatewayReassignedEvent,
   GatewayDocumentAttestation,
 } from './../facillity_dashboard_mocks';
 import type { CadencePolicy, RelayerRegisteredEvent, KeyRotatedEvent } from './../../types';
@@ -25,7 +21,6 @@ import {
   StatCard,
   SectionHeader,
   EmptyHint,
-  EventList,
 } from './DashboardUtils';
 import type {
   EntityModalProps,
@@ -54,8 +49,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
     gracePeriod: BigNumber(0),
   });
   const [measurements, setMeasurements] = useState<GatewayDocumentAttestation[]>([]);
-  const [assigned, setAssigned] = useState<GatewayAssignedEvent[]>([]);
-  const [reassigned, setReassigned] = useState<GatewayReassignedEvent[]>([]);
   const [rotations, setRotations] = useState<KeyRotatedEvent[]>([]);
 
   useEffect(() => {
@@ -65,18 +58,14 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const [p, docs, a, ra, k] = await Promise.all([
+        const [p, docs, k] = await Promise.all([
           getGatewayStatus(facilityAddress, gateway),
           getAllMeasurements(facilityAddress, gateway),
-          getGatewayAssignedEvents(facilityAddress, gateway),
-          getGatewayReassignedEvents(facilityAddress, gateway),
           getKeyRotatedEvents(facilityAddress, gateway),
         ]);
         if (cancelled) return;
         setPolicy(p);
         setMeasurements(docs);
-        setAssigned(a);
-        setReassigned(ra);
         setRotations(k);
       } catch (err: unknown) {
         if (!cancelled) {
@@ -263,12 +252,6 @@ const GatewayBody: React.FC<GatewayBodyProps> = ({
             ))}
           </div>
         )}
-      </section>
-
-      {/* History */}
-      <section>
-        <SectionHeader icon="🕓" title="History" />
-        <EventList assigned={assigned} reassigned={reassigned} rotations={[]} />
       </section>
     </div>
   );
