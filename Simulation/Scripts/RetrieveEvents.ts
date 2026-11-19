@@ -38,7 +38,7 @@ async function main() {
     helper,
   ] = await loadContracts();
 
-  const signer = await helper.createSignerFromPrivateKey("0x7236af21666c0a22ac4813892ee1164e9d715915f21c8bf8ed91a42cadec4483"); // TODO: put your admin/operator private key here
+  const signer = await helper.createSignerFromPrivateKey("DO NOT SHARE"); // TODO: put your admin/operator private key here
 
   await runStep("BackFillEventsForDebugging", () =>
     factoryContractWrite.FactoryWriteContract.BackFillEventsForDebugging(signer)
