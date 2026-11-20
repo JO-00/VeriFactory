@@ -1,4 +1,4 @@
-# Facility Factory
+# VeriFactory
 
 **A decentralized facility transparency and accountability ecosystem built on Hedera.**
 
